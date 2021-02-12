@@ -11,8 +11,10 @@
 std::string buffer[2];
 bool frameDone[2];
 bool printDone[2];
+bool statusBar = true;
+long double fpscap = 1e9;
 
-void createFrames(cv::VideoCapture cap, bool statusBar) {
+void createFrames(cv::VideoCapture cap) {
 	int currentBuffer = 0;
 
 	// Create variables.
@@ -20,11 +22,19 @@ void createFrames(cv::VideoCapture cap, bool statusBar) {
 	auto frameStart = std::chrono::steady_clock::now();
 	std::vector<long double> frameTimes;
 	long double frameCount = 0;
+	long double frameCount2 = 0;
 	long double fps = cap.get(cv::CAP_PROP_FPS);
 	cv::Mat frame;
 	while (1) {
 		// Read frame.
 		cap >> frame;
+
+		long double frameTime = frameCount / fps;
+		long double frameTime2 = frameCount2 / fpscap;
+		if (frameTime2 > frameTime) {
+			++frameCount;
+			continue;
+		}
 
 		// Calculate terminal size.
 		struct winsize w;
@@ -62,7 +72,7 @@ void createFrames(cv::VideoCapture cap, bool statusBar) {
 			frameTimes.push_back(milliseconds);
 			int amount = 0;
 			long double sum = 0;
-			for (int i = frameCount; i > 0 && amount < 20; --i) {
+			for (int i = frameCount2; i > 0 && amount < 20; --i) {
 				++amount;
 				sum += frameTimes[i];
 			}
@@ -97,7 +107,8 @@ void createFrames(cv::VideoCapture cap, bool statusBar) {
 			}
 			buffer[currentBuffer] += "\n";
 		}
-		frameCount++;
+		++frameCount;
+		++frameCount2;
 
 		frameDone[currentBuffer] = true;
 		printDone[currentBuffer] = false;
@@ -128,7 +139,7 @@ void print(cv::VideoCapture cap) {
 		// Check if the player should sleep.
 		auto end = std::chrono::steady_clock::now();
 		long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-		long double sleepDuration = frameCount / fps - milliseconds/1000;
+		long double sleepDuration = frameCount / std::min(fps, (long double)fpscap) - milliseconds/1000;
 		if (sleepDuration > 0) std::this_thread::sleep_for(std::chrono::milliseconds((int)(sleepDuration*1000)));
 
 		// Print frame.
@@ -144,12 +155,12 @@ int main(int argc, char **argv) {
 	std::ios_base::sync_with_stdio(false);
 	std::cin.tie(0);
 
-	bool statusBar = true;
 
 	// Manage arguments
 	if (argc < 2) {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>" << '\n';
 		std::cout << "\t-d disable status bar.\n";
+		std::cout << "\t-f <fps> cap fps.\n";
 		exit(0);
 	}
 	for (int i = 1; i < argc - 1; ++i) {
@@ -160,6 +171,10 @@ int main(int argc, char **argv) {
 		}
 		for (int j = 1; j < len; ++j) {
 			if (argv[i][j] == 'd') statusBar = false;
+			else if (argv[i][j] == 'f') {
+				fpscap = atof(argv[i+1]);
+				++i;
+			}
 			else {
 				std::cout << "Invalid argument: -" << argv[i][j] << '\n';
 				exit(0);
@@ -181,7 +196,7 @@ int main(int argc, char **argv) {
 
 	std::thread printThread(print, cap);
 	sleep(0.1);
-	std::thread bufferThread(createFrames, cap, statusBar);
+	std::thread bufferThread(createFrames, cap);
 	bufferThread.join();
 	printThread.join();
 
