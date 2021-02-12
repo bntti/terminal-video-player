@@ -1,5 +1,8 @@
-requires opencv
+Requires:
+* opencv
 
-to run do:
-./compiler.sh
+To run do:
+```
+./compile.sh
 ./videoPlayer <videofile>
+```
