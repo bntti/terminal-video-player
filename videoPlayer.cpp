@@ -8,52 +8,19 @@
 #include <thread>
 #include <vector>
 
-int main(int argc, char **argv) {
-	std::ios_base::sync_with_stdio(false);
-	std::cin.tie(0);
+std::string buffer[2];
+bool frameDone[2];
+bool printDone[2];
 
-	bool statusBar = true;
-
-	// Manage arguments
-	if (argc < 2) {
-		std::cout << "Usage: " << argv[0] << " <args> <filename>" << '\n';
-		std::cout << "\t-d disable status bar.\n";
-		exit(0);
-	}
-	for (int i = 1; i < argc - 1; ++i) {
-		int len = strlen(argv[i]);
-		if (argv[i][0] != '-' || len < 2) {
-			std::cout << "Invalid argument: " << argv[i] << '\n';
-			exit(0);
-		}
-		for (int j = 1; j < len; ++j) {
-			if (argv[i][j] == 'd') statusBar = false;
-			else {
-				std::cout << "Invalid argument: -" << argv[i][j] << '\n';
-				exit(0);
-			}
-		}
-	}
-
-	// Hide cursor.
-	printf("\33[?25l");
-
-	// Open video.
-	std::string filename = argv[argc-1];
-	cv::VideoCapture cap(filename);
-
-	// Check if video is open.
-	if (!cap.isOpened()) {
-		std::cout << "Error opening video stream or file" << std::endl;
-		return -1;
-	}
+void createFrames(cv::VideoCapture cap, bool statusBar) {
+	int currentBuffer = 0;
 
 	// Create variables.
-	long double fps = cap.get(cv::CAP_PROP_FPS);
-	long double frameCount = 0;
 	auto start = std::chrono::steady_clock::now();
 	auto frameStart = std::chrono::steady_clock::now();
 	std::vector<long double> frameTimes;
+	long double frameCount = 0;
+	long double fps = cap.get(cv::CAP_PROP_FPS);
 	cv::Mat frame;
 	while (1) {
 		// Read frame.
@@ -84,7 +51,7 @@ int main(int argc, char **argv) {
 		cv::resize(frame, frame, cv::Size(std::floor(width), std::floor(height)));
 
 		std::string status = "";
-		
+
 		if (statusBar) {
 			status += "Res: " + std::to_string((int)width) + "x" + std::to_string((int)(fac * height));
 
@@ -107,7 +74,8 @@ int main(int argc, char **argv) {
 		}
 		int i = 0;
 		int len = status.length();
-		std::string asciiFrame = "\33[0;0H";
+		buffer[currentBuffer] = "\33[0;0H";
+
 		// Create frame.
 		for (int y = 0; y < height; ++y) {
 			for (int x = 0; x < width; ++x) {
@@ -125,10 +93,38 @@ int main(int argc, char **argv) {
 					++i;
 				}
 				// Add pixel to frame.
-				asciiFrame += "\x1b[48;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m" + c;
+				buffer[currentBuffer] += "\x1b[48;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m" + c;
 			}
-			asciiFrame += "\n";
+			buffer[currentBuffer] += "\n";
 		}
+		frameCount++;
+
+		frameDone[currentBuffer] = true;
+		printDone[currentBuffer] = false;
+		currentBuffer = (currentBuffer + 1) % 2;
+		while (1) {
+			if (printDone[currentBuffer]) break;
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+	}
+}
+
+void print(cv::VideoCapture cap) {
+	int currentBuffer = 0;
+
+	// Hide cursor.
+	printf("\33[?25l");
+
+	// Create variables.
+	long double fps = cap.get(cv::CAP_PROP_FPS);
+	long double frameCount = 0;
+	auto start = std::chrono::steady_clock::now();
+	while (1) {
+		while (1) {
+			if (frameDone[currentBuffer]) break;
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+
 		// Check if the player should sleep.
 		auto end = std::chrono::steady_clock::now();
 		long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
@@ -136,10 +132,59 @@ int main(int argc, char **argv) {
 		if (sleepDuration > 0) std::this_thread::sleep_for(std::chrono::milliseconds((int)(sleepDuration*1000)));
 
 		// Print frame.
-		printf(asciiFrame.c_str());
-
+		printf(buffer[currentBuffer].c_str());
 		++frameCount;
+		printDone[currentBuffer] = true;
+		frameDone[currentBuffer] = false;
+		currentBuffer = (currentBuffer + 1) % 2;
 	}
+}
+
+int main(int argc, char **argv) {
+	std::ios_base::sync_with_stdio(false);
+	std::cin.tie(0);
+
+	bool statusBar = true;
+
+	// Manage arguments
+	if (argc < 2) {
+		std::cout << "Usage: " << argv[0] << " <args> <filename>" << '\n';
+		std::cout << "\t-d disable status bar.\n";
+		exit(0);
+	}
+	for (int i = 1; i < argc - 1; ++i) {
+		int len = strlen(argv[i]);
+		if (argv[i][0] != '-' || len < 2) {
+			std::cout << "Invalid argument: " << argv[i] << '\n';
+			exit(0);
+		}
+		for (int j = 1; j < len; ++j) {
+			if (argv[i][j] == 'd') statusBar = false;
+			else {
+				std::cout << "Invalid argument: -" << argv[i][j] << '\n';
+				exit(0);
+			}
+		}
+	}
+
+	printDone[0] = true;
+	printDone[1] = true;
+
+	// Open video.
+	cv::VideoCapture cap(argv[argc-1]);
+
+	// Check if video is open.
+	if (!cap.isOpened()) {
+		std::cout << "Error opening video stream or file" << std::endl;
+		exit(-1);
+	}
+
+	std::thread printThread(print, cap);
+	sleep(0.1);
+	std::thread bufferThread(createFrames, cap, statusBar);
+	bufferThread.join();
+	printThread.join();
+
 	cap.release();
 	return 0;
 }
