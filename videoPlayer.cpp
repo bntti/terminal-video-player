@@ -12,15 +12,25 @@ int main(int argc, char **argv) {
 	std::ios_base::sync_with_stdio(false);
 	std::cin.tie(0);
 
+	// Hide cursor.
 	printf("\33[?25l");
-	if (argc < 2) std::cout << "Usage ./" << argv[0] << " <filename.mp4>" << std::endl;
-	std::string filename = argv[1];
-	cv::VideoCapture cap(filename); 
 
+	if (argc < 2) {
+		std::cout << "Usage " << argv[0] << " <filename>" << std::endl;
+		return 0;
+	}
+
+	// Open video.
+	std::string filename = argv[1];
+	cv::VideoCapture cap(filename);
+
+	// Check if video is open.
 	if (!cap.isOpened()) {
 		std::cout << "Error opening video stream or file" << std::endl;
 		return -1;
 	}
+
+	// Create variables.
 	std::vector<long double> frameTimes;
 	long double fps = cap.get(cv::CAP_PROP_FPS);
 	long double frameCount = 0;
@@ -28,28 +38,34 @@ int main(int argc, char **argv) {
 	auto frameStart = std::chrono::steady_clock::now();
 	cv::Mat frame;
 	while (1) {
+		// Read frame.
 		cap >> frame;
 
+		// Calculate terminal size.
 		struct winsize w;
 		ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 		long double lines = w.ws_row;
 		long double cols = w.ws_col;
+
+		// Remove 2 from lines to prevent too many newlines.
 		lines -= 2;
 
+		// Calculate font aspect ratio. (Assumes that terminal aspect ratio is 16:9)
 		long double fac = (cols * 9) / (lines * 16);
 
+		// Calculate new width and height by scaling to terminal resolution (columns x lines).
 		long double width = frame.size().width;
 		long double height = frame.size().height;
-
-		long double widthScale = width / (cols);
-		long double heightScale = height / (lines);
-		long double scale = std::max(widthScale, heightScale / fac);
-		
+		long double widthScale = width / cols;
+		long double heightScale = height / lines;
+		long double scale = std::max(widthScale, heightScale / fac);		
 		width = std::min((int)width, (int)std::floor(frame.size().width / scale));
-		height = std::min((int)(height/fac), (int)std::floor(frame.size().height / (scale*fac)));
+		height = std::min((int)(height / fac), (int)std::floor(frame.size().height / (scale * fac)));
 
+		// Resize frame to previously calculated width and height.
 		cv::resize(frame, frame, cv::Size(std::floor(width), std::floor(height)));
 
+		// Calculate framerate
 		auto end = std::chrono::steady_clock::now();
 		long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - frameStart).count();
 		frameStart = std::chrono::steady_clock::now();
@@ -60,13 +76,16 @@ int main(int argc, char **argv) {
 			++amount;
 			sum += frameTimes[i];
 		}
-		std::string status = "Fps: " + std::to_string(1000/(sum/amount));
+		std::string status = "Fps: " + std::to_string(1000 / (sum / amount));
+
+		// Calculate how much the player is behind the original video.
 		milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-		status += " behind by: " + std::to_string((int)std::max((long double)0, (1000 * (milliseconds/1000 - frameCount / fps)))) + "ms";
+		status += " behind by: " + std::to_string((int)std::max((long double)0, (1000 * (milliseconds / 1000 - frameCount / fps)))) + "ms";
+
 		int i = 0;
 		int len = status.length();
-
-		std::string asciiFrame = "";
+		std::string asciiFrame = "\33[0;0H";
+		// Create frame.
 		for (int y = 0; y < height; ++y) {
 			for (int x = 0; x < width; ++x) {
 				int b = frame.at<cv::Vec3b>(y, x)[0];
@@ -74,6 +93,7 @@ int main(int argc, char **argv) {
 				int r = frame.at<cv::Vec3b>(y, x)[2];
 				std::string c = " ";
 				if (i != len) {
+					// Invert color.
 					int invColor = 0xFFFFFF - (r << 16 | g << 8 | b);
 					int rr = (invColor >> 16) & 0xFF;
 					int rg = (invColor >> 8) & 0xFF;
@@ -81,19 +101,21 @@ int main(int argc, char **argv) {
 					c = "\33[38;2;" + std::to_string(rr) + ";" + std::to_string(rg) + ";" + std::to_string(rb) + "m" + status[i];
 					++i;
 				}
+				// Add pixel to frame.
 				asciiFrame += "\x1b[48;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m" + c;
 			}
 			asciiFrame += "\n";
 		}
-
+		// Check if the player should sleep.
 		end = std::chrono::steady_clock::now();
 		milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 		long double sleepDuration = frameCount / fps - milliseconds/1000;
 		if (sleepDuration > 0) std::this_thread::sleep_for(std::chrono::milliseconds((int)(sleepDuration*1000)));
-		asciiFrame = "\33[0;0H" + asciiFrame;
-		printf(asciiFrame.c_str());
-		++frameCount;
 
+		// Print frame.
+		printf(asciiFrame.c_str());
+
+		++frameCount;
 	}
 	cap.release();
 	return 0;
