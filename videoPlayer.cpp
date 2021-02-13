@@ -13,6 +13,7 @@ bool frameDone[2];
 bool printDone[2];
 bool statusBar = true;
 long double fpscap = 1e9;
+int colorThreshold = 0;
 
 void createFrames(cv::VideoCapture cap) {
 	int currentBuffer = 0;
@@ -25,6 +26,9 @@ void createFrames(cv::VideoCapture cap) {
 	long double frameCount2 = 0;
 	long double fps = cap.get(cv::CAP_PROP_FPS);
 	cv::Mat frame;
+	int pr = 1e5;
+	int pg = 1e5;
+	int pb = 1e5;
 	while (1) {
 		// Read frame.
 		cap >> frame;
@@ -103,7 +107,14 @@ void createFrames(cv::VideoCapture cap) {
 					++i;
 				}
 				// Add pixel to frame.
-				buffer[currentBuffer] += "\x1b[48;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m" + c;
+				// Check if color should be changed.
+				if (abs(r - pr) + abs(g - pg) + abs(b - pb) > colorThreshold) {
+					pr = r;
+					pg = g;
+					pb = b;
+					buffer[currentBuffer] += "\x1b[48;2;" + std::to_string(r) + ";" + std::to_string(g) + ";" + std::to_string(b) + "m";
+				}
+				buffer[currentBuffer] += c;
 			}
 			buffer[currentBuffer] += "\n";
 		}
@@ -161,9 +172,11 @@ int main(int argc, char **argv) {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>" << '\n';
 		std::cout << "\t-d disable status bar.\n";
 		std::cout << "\t-f <fps> cap fps.\n";
+		std::cout << "\t-c <colorThreshold> threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
 		exit(0);
 	}
 	for (int i = 1; i < argc - 1; ++i) {
+		bool skip = false;
 		int len = strlen(argv[i]);
 		if (argv[i][0] != '-' || len < 2) {
 			std::cout << "Invalid argument: " << argv[i] << '\n';
@@ -173,13 +186,17 @@ int main(int argc, char **argv) {
 			if (argv[i][j] == 'd') statusBar = false;
 			else if (argv[i][j] == 'f') {
 				fpscap = atof(argv[i+1]);
-				++i;
+				skip = true;
+			} else if (argv[i][j] == 'c') {
+				colorThreshold = atoi(argv[i+1]);
+				skip = true;
 			}
 			else {
 				std::cout << "Invalid argument: -" << argv[i][j] << '\n';
 				exit(0);
 			}
 		}
+		if (skip) ++i;
 	}
 
 	printDone[0] = true;
