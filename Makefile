@@ -1,0 +1,6 @@
+CXXFLAGS := -I /usr/include/opencv4 -lopencv_shape -lopencv_videoio -lopencv_imgproc -lopencv_core -lpthread -Wshadow -Wall -Wextra -O3 -march=native
+videoPlayer: videoPlayer.cpp
+	$(CXX) $(CXXFLAGS) $? -o $@
+
+clean:
+	-rm -rf videoPlayer
