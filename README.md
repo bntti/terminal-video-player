@@ -3,7 +3,7 @@ Requires:
 
 To run program do:
 ```
-./compile.sh
+make
 ./videoPlayer <videofile>
 ```
 
