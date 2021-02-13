@@ -29,6 +29,8 @@ void createFrames(cv::VideoCapture cap) {
 	int pr = 1e5;
 	int pg = 1e5;
 	int pb = 1e5;
+	int plines = 0;
+	int pcols = 0;
 	while (1) {
 		// Read frame.
 		cap >> frame;
@@ -86,10 +88,18 @@ void createFrames(cv::VideoCapture cap) {
 			milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 			status += "|behind by: " + std::to_string((int)std::max((long double)0, (1000 * (milliseconds / 1000 - frameCount / fps)))) + "ms";
 		}
+
+		buffer[currentBuffer] = "";
+		if ((int)lines != plines || (int)cols != pcols) {
+			buffer[currentBuffer] += "\33[0m\33[3J\33[2J";
+			pr = 1e9;
+			plines = (int)lines;
+			pcols = (int)cols;
+		}
+		buffer[currentBuffer] += "\33[0;0H";
+
 		int i = 0;
 		int len = status.length();
-		buffer[currentBuffer] = "\33[0;0H";
-
 		// Create frame.
 		for (int y = 0; y < height; ++y) {
 			for (int x = 0; x < width; ++x) {
