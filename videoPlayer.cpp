@@ -1,8 +1,10 @@
 #include <opencv4/opencv2/opencv.hpp>
+#include <SFML/Audio.hpp>
 #include <iostream>
 #include <string>
 #include <sys/ioctl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <chrono>
 #include <unistd.h>
 #include <thread>
@@ -59,7 +61,7 @@ void createFrames(cv::VideoCapture cap) {
 		long double height = frame.size().height;
 		long double widthScale = width / cols;
 		long double heightScale = height / lines;
-		long double scale = std::max(widthScale, heightScale / fac);		
+		long double scale = std::max(widthScale, heightScale / fac);
 		width = std::min((int)width, (int)std::floor(frame.size().width / scale));
 		height = std::min((int)(height / fac), (int)std::floor(frame.size().height / (scale * fac)));
 
@@ -176,34 +178,44 @@ int main(int argc, char **argv) {
 	std::ios_base::sync_with_stdio(false);
 	std::cin.tie(0);
 
+	std::string fileName = "";
+	bool playAudio = true;
 
 	// Manage arguments
 	if (argc < 2) {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>" << '\n';
-		std::cout << "\t-d disable status bar.\n";
-		std::cout << "\t-f <fps> cap fps.\n";
+		std::cout << "\t-a disable audio.\n";
 		std::cout << "\t-c <colorThreshold> threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
+		std::cout << "\t-s disable status bar.\n";
+		std::cout << "\t-f <fps> cap fps.\n";
 		exit(0);
 	}
-	for (int i = 1; i < argc - 1; ++i) {
+	for (int i = 1; i < argc; ++i) {
 		bool skip = false;
 		int len = strlen(argv[i]);
-		if (argv[i][0] != '-' || len < 2) {
-			std::cout << "Invalid argument: " << argv[i] << '\n';
-			exit(0);
+		if (argv[i][0] != '-') {
+			fileName = argv[i];
+			continue;
 		}
 		for (int j = 1; j < len; ++j) {
-			if (argv[i][j] == 'd') statusBar = false;
-			else if (argv[i][j] == 'f') {
-				fpscap = atof(argv[i+1]);
-				skip = true;
-			} else if (argv[i][j] == 'c') {
-				colorThreshold = atoi(argv[i+1]);
-				skip = true;
-			}
-			else {
-				std::cout << "Invalid argument: -" << argv[i][j] << '\n';
-				exit(0);
+			switch(argv[i][j]) {
+				case 'a':
+					playAudio = false;
+					break;
+				case 'c':
+					colorThreshold = atoi(argv[i+1]);
+					skip = true;
+					break;
+				case 'f':
+					fpscap = atof(argv[i+1]);
+					skip = true;
+					break;
+				case 's':
+					statusBar = false;
+					break;
+				default:
+					std::cout << "Invalid argument: -" << argv[i][j] << '\n';
+					exit(0);
 			}
 		}
 		if (skip) ++i;
@@ -213,7 +225,7 @@ int main(int argc, char **argv) {
 	printDone[1] = true;
 
 	// Open video.
-	cv::VideoCapture cap(argv[argc-1]);
+	cv::VideoCapture cap(fileName);
 
 	// Check if video is open.
 	if (!cap.isOpened()) {
@@ -221,12 +233,34 @@ int main(int argc, char **argv) {
 		exit(-1);
 	}
 
+	sf::Music music;
+	// Play audio.
+	if (playAudio) {
+		std::cout << "Extraction audio" << std::endl;
+		std::string command = "ffmpeg -y -i " + fileName + " tmp.mp3 &> /dev/null";
+		std::cout << command << std::endl;
+		system(command.c_str());
+		command = "ffmpeg -y -i tmp.mp3 audio.ogg &> /dev/null";
+		std::cout << command << std::endl;
+		system(command.c_str());
+		std::cout << "Deleteting tmp.mp3" << std::endl;
+		remove("tmp.mp3");
+
+		if (!music.openFromFile("audio.ogg")) {
+			std::cout << "Error opening audio file" << std::endl;
+			exit(-1);
+		}
+		std::cout << "Deleteting audio.ogg" << std::endl;
+		remove("audio.ogg");
+
+		music.play();
+	}
+
+	// Start threads.
 	std::thread printThread(print, cap);
-	sleep(0.1);
 	std::thread bufferThread(createFrames, cap);
 	bufferThread.join();
 	printThread.join();
-
 	cap.release();
 	return 0;
 }
