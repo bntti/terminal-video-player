@@ -9,15 +9,25 @@
 #include <unistd.h>
 #include <thread>
 #include <vector>
+#include <termios.h>
 
+// Communication between print and createFrames threads.
 std::string buffer[2];
 bool frameDone[2];
 bool printDone[2];
+
+// Communication between all threads.
+bool stopProgram = false;
+bool paused = false;
+int move[2];
+
+// Global variables set by flags.
 bool statusBar = true;
 long double fpscap = 1e9;
 int colorThreshold = 0;
+bool playAudio = true;
 
-void createFrames(cv::VideoCapture cap) {
+void createFrames(cv::VideoCapture cap, int threadID) {
 	int currentBuffer = 0;
 
 	// Create variables.
@@ -34,6 +44,14 @@ void createFrames(cv::VideoCapture cap) {
 	int plines = 0;
 	int pcols = 0;
 	while (1) {
+		if (move[threadID] != 0) {
+			long double increase = move[threadID];
+			if (frameCount < fps * -increase) increase = -frameCount / fps;
+			frameCount += (int)(fps * increase);
+			start += std::chrono::milliseconds((int) (increase * 1000));
+			cap.set(cv::CAP_PROP_POS_FRAMES, frameCount);
+			move[threadID] = 0;
+		}
 		// Read frame.
 		cap >> frame;
 
@@ -137,7 +155,9 @@ void createFrames(cv::VideoCapture cap) {
 		printDone[currentBuffer] = false;
 		currentBuffer = (currentBuffer + 1) % 2;
 		while (1) {
-			if (printDone[currentBuffer]) break;
+			if (stopProgram) return;
+			if (paused) start += std::chrono::milliseconds(1);
+			if (!paused && printDone[currentBuffer]) break;
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 	}
@@ -146,16 +166,15 @@ void createFrames(cv::VideoCapture cap) {
 void print(cv::VideoCapture cap) {
 	int currentBuffer = 0;
 
-	// Hide cursor.
-	printf("\33[?25l");
-
 	// Create variables.
 	long double fps = cap.get(cv::CAP_PROP_FPS);
 	long double frameCount = 0;
 	auto start = std::chrono::steady_clock::now();
 	while (1) {
 		while (1) {
-			if (frameDone[currentBuffer]) break;
+			if (stopProgram) return;
+			if (paused) start += std::chrono::milliseconds(1);
+			if (!paused && frameDone[currentBuffer]) break;
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 
@@ -174,20 +193,70 @@ void print(cv::VideoCapture cap) {
 	}
 }
 
-int main(int argc, char **argv) {
-	std::ios_base::sync_with_stdio(false);
-	std::cin.tie(0);
+void getInputs() {
+    while(1) {
+        char c = getc(stdin);
+		switch(c) {
+			case 'q':
+				stopProgram = true;
+				return;
+			case 'j':
+				for (int& x : move) x -= 5;
+				break;
+			case 'l':
+				for (int& x : move) x += 5;
+				break;
+			case 'k':
+				paused = !paused;
+				break;
+			default:
+				break;
+		}
+    }
+}
 
+void audioPlayer(std::string fileName, int threadID) {
+	sf::Music music;
+	if (!playAudio) return;
+	if (!music.openFromFile(fileName)) {
+		std::cout << "Error opening audio file" << std::endl;
+		exit(-1);
+	}
+	std::cout << "Deleteting " << fileName << std::endl;
+	remove(fileName.c_str());
+
+	music.play();
+	while (1) {
+		if (stopProgram) return;
+		if (paused && music.getStatus() == music.Playing) music.pause();
+		if (!paused && music.getStatus() == music.Paused) music.play();
+		if (move[threadID] != 0) {
+			sf::Time current = music.getPlayingOffset();
+			current += sf::seconds(move[threadID]);
+			if (current.asSeconds() <= 0) current = current.Zero;
+			music.setPlayingOffset(current);
+			move[threadID] = 0;
+		}
+
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+}
+
+int main(int argc, char **argv) {
 	std::string fileName = "";
-	bool playAudio = true;
 
 	// Manage arguments
 	if (argc < 2) {
-		std::cout << "Usage: " << argv[0] << " <args> <filename>" << '\n';
-		std::cout << "\t-a disable audio.\n";
-		std::cout << "\t-c <colorThreshold> threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
-		std::cout << "\t-s disable status bar.\n";
-		std::cout << "\t-f <fps> cap fps.\n";
+		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
+		std::cout << "\t'-a' disable audio.\n";
+		std::cout << "\t'-c <colorThreshold>' threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
+		std::cout << "\t'-s' disable status bar.\n";
+		std::cout << "\t'-f <fps>' cap fps.\n";
+		std::cout << "\n";
+		std::cout << "Player controls:\n";
+		std::cout << "'l' Go backward by 5 seconds.\n";
+		std::cout << "'r' Go forward by 5 seconds.\n";
+		std::cout << "'k' Pause.\n";
 		exit(0);
 	}
 	for (int i = 1; i < argc; ++i) {
@@ -233,7 +302,6 @@ int main(int argc, char **argv) {
 		exit(-1);
 	}
 
-	sf::Music music;
 	// Play audio.
 	if (playAudio) {
 		std::cout << "Extraction audio" << std::endl;
@@ -245,22 +313,32 @@ int main(int argc, char **argv) {
 		system(command.c_str());
 		std::cout << "Deleteting tmp.mp3" << std::endl;
 		remove("tmp.mp3");
-
-		if (!music.openFromFile("audio.ogg")) {
-			std::cout << "Error opening audio file" << std::endl;
-			exit(-1);
-		}
-		std::cout << "Deleteting audio.ogg" << std::endl;
-		remove("audio.ogg");
-
-		music.play();
 	}
 
+	// Hide cursor.
+	printf("\33[?25l");
+
+	// Don't wait for newline when asking for input.
+	static struct termios oldt, newt;
+    tcgetattr(STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
 	// Start threads.
+	std::thread audioThread(audioPlayer, "audio.ogg", 0);
 	std::thread printThread(print, cap);
-	std::thread bufferThread(createFrames, cap);
+	std::thread bufferThread(createFrames, cap, 1);
+	std::thread inputThread(getInputs);
+	inputThread.join();
 	bufferThread.join();
 	printThread.join();
+	audioThread.join();
 	cap.release();
+
+	// Reset terminal.
+	system("tput reset");
+
+	tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
 	return 0;
 }
