@@ -4,3 +4,5 @@ videoPlayer: videoPlayer.cpp
 
 clean:
 	-rm -rf videoPlayer
+
+.PHONY: clean
