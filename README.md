@@ -6,9 +6,11 @@ Plays various video formats inside a terminal. Can also be used to play video fr
 * sfml
 
 ## Usage
-To compile program run: `make`
+To compile the program run: `make`
+
 Usage: `./videoPlayer <args> <filename>`
-A hardware accelerated terminal is recommended. For example [alacritty](https://github.com/alacritty/alacritty).
+
+A hardware accelerated terminal (for example [alacritty](https://github.com/alacritty/alacritty)) is recommended for better performance. 
 
 #### Runtime flags:
 | Flag                   | Description                                                                                               |
