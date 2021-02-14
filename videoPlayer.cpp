@@ -197,18 +197,18 @@ void getInputs() {
     while(1) {
         char c = getc(stdin);
 		switch(c) {
-			case 'q':
-				stopProgram = true;
-				return;
 			case 'j':
 				for (int& x : move) x -= 5;
-				break;
-			case 'l':
-				for (int& x : move) x += 5;
 				break;
 			case 'k':
 				paused = !paused;
 				break;
+			case 'l':
+				for (int& x : move) x += 5;
+				break;
+			case 'q':
+				stopProgram = true;
+				return;
 			default:
 				break;
 		}
@@ -244,21 +244,9 @@ void audioPlayer(std::string fileName, int threadID) {
 
 int main(int argc, char **argv) {
 	std::string fileName = "";
+	bool help = false;
 
 	// Manage arguments
-	if (argc < 2) {
-		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
-		std::cout << "\t'-a' disable audio.\n";
-		std::cout << "\t'-c <colorThreshold>' threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
-		std::cout << "\t'-s' disable status bar.\n";
-		std::cout << "\t'-f <fps>' cap fps.\n";
-		std::cout << "\n";
-		std::cout << "Player controls:\n";
-		std::cout << "'l' Go backward by 5 seconds.\n";
-		std::cout << "'r' Go forward by 5 seconds.\n";
-		std::cout << "'k' Pause.\n";
-		exit(0);
-	}
 	for (int i = 1; i < argc; ++i) {
 		bool skip = false;
 		int len = strlen(argv[i]);
@@ -279,6 +267,9 @@ int main(int argc, char **argv) {
 					fpscap = atof(argv[i+1]);
 					skip = true;
 					break;
+				case 'h':
+					help = true;
+					break;
 				case 's':
 					statusBar = false;
 					break;
@@ -288,6 +279,21 @@ int main(int argc, char **argv) {
 			}
 		}
 		if (skip) ++i;
+	}
+	if (help || fileName == "") {
+		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
+		std::cout << "\t'-a' | Disable audio.\n";
+		std::cout << "\t'-c <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
+		std::cout << "\t'-f <fps>' | Set fps cap.\n";
+		std::cout << "\t'-h' | Show this menu and exit.\n";
+		std::cout << "\t'-s' | Disable status text.\n";
+		std::cout << "\n";
+		std::cout << "Player controls:\n";
+		std::cout << "\t'j' | Skip backward by 5 seconds.\n";
+		std::cout << "\t'k' | Pause.\n";
+		std::cout << "\t'l' | Skip forward by 5 seconds.\n";
+		std::cout << "\t'q' | Exit.\n";
+		exit(0);
 	}
 
 	printDone[0] = true;
