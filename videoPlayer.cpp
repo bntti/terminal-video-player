@@ -311,7 +311,7 @@ int main(int argc, char **argv) {
 	// Play audio.
 	if (playAudio) {
 		std::cout << "Extraction audio" << std::endl;
-		std::string command = "ffmpeg -y -i " + fileName + " tmp.mp3 &> /dev/null";
+		std::string command = "ffmpeg -y -i \"" + fileName + "\" tmp.mp3 &> /dev/null";
 		std::cout << command << std::endl;
 		system(command.c_str());
 		command = "ffmpeg -y -i tmp.mp3 audio.ogg &> /dev/null";
