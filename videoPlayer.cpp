@@ -48,7 +48,8 @@ void createFrames(cv::VideoCapture cap, int threadID) {
 			long double increase = move[threadID];
 			if (frameCount < fps * -increase) increase = -frameCount / fps;
 			frameCount += (int)(fps * increase);
-			start += std::chrono::milliseconds((int) (increase * 1000));
+			frameCount2 += (int)(fpscap * increase);
+			start -= std::chrono::milliseconds((int) (increase * 1000));
 			cap.set(cv::CAP_PROP_POS_FRAMES, frameCount);
 			move[threadID] = 0;
 		}
@@ -98,7 +99,8 @@ void createFrames(cv::VideoCapture cap, int threadID) {
 			frameTimes.push_back(milliseconds);
 			int amount = 0;
 			long double sum = 0;
-			for (int i = frameCount2; i > 0 && amount < 20; --i) {
+			int size = frameTimes.size() - 1;
+			for (int i = size; i > 0 && amount < 20; --i) {
 				++amount;
 				sum += frameTimes[i];
 			}
