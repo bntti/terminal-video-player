@@ -61,6 +61,11 @@ void createFrames(cv::VideoCapture cap) {
 		// Read frame.
 		cap >> frame;
 
+		if (frame.empty()) {
+			stopProgram = true;
+			return;
+		}
+
 		// Calculate terminal size.
 		struct winsize w;
 		ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
@@ -335,10 +340,13 @@ int main(int argc, char **argv) {
 	std::thread inputThread(getInputs);
 
 	// Join threads.
-	inputThread.join();
 	bufferThread.join();
 	printThread.join();
 	audioThread.join();
+	
+	// Detach input thread because it may be stuck waiting for input.
+	inputThread.detach();
+
 	cap.release();
 
 	// Reset terminal.
