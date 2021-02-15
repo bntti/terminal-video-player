@@ -22,6 +22,7 @@ bool printDone[2];
 // Communication between all threads.
 bool stopProgram = false;
 bool videoPaused = false;
+bool restart = false;
 
 // Global variables set by flags.
 bool showStatusText = true;
@@ -49,7 +50,8 @@ void createFrames(cv::VideoCapture cap) {
 		long double newFrameCount = currentTimeS * fps;
 
 		// Match the global time.
-		while (abs(newFrameCount - frameCount) >= fps/2) {
+		while (restart || abs(newFrameCount - frameCount) > fps) {
+			restart = false;
 			cap.set(cv::CAP_PROP_POS_FRAMES, (int)newFrameCount);
 			frameCount = newFrameCount;
 			currentTimeS = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalTime).count() / 1000.0;
@@ -61,6 +63,7 @@ void createFrames(cv::VideoCapture cap) {
 
 		if (frame.empty()) {
 			if (loop) {
+				restart = true;
 				globalTime = std::chrono::steady_clock::now();
 				continue;
 			}
@@ -215,6 +218,7 @@ void getInputs() {
 				stopProgram = true;
 				return;
 			case 'r':
+				restart = true;
 				globalTime = std::chrono::steady_clock::now();
 				break;
 			default:
