@@ -44,9 +44,9 @@ void createFrames(cv::VideoCapture cap) {
 	long double frameCount = 0;
 	long double fps = cap.get(cv::CAP_PROP_FPS);
 	cv::Mat frame;
-	int prevR = 1e5;
-	int prevG = 1e5;
-	int prevB = 1e5;
+	int prevR = 1e9;
+	int prevG = 0;
+	int prevB = 0;
 	int prevLines = 0;
 	int prevCols = 0;
 	while (1) {
@@ -54,29 +54,33 @@ void createFrames(cv::VideoCapture cap) {
 		long double currentTimeS = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalTime).count() / 1000.0;
 		long double newFrameCount = currentTimeS * fps;
 
-		// Fast catching up if difference isn't big.
-		while (newFrameCount > frameCount && newFrameCount - frameCount < fps) {
-			cap >> frame;
-			++frameCount;
-		}
-		if (newFrameCount < frameCount && frameCount - newFrameCount < fps) {
-			long double seconds = (frameCount - newFrameCount) / fps;
-			std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
+		if (!restart) {
+			// Fast catching up if difference isn't big.
+			while (newFrameCount > frameCount && newFrameCount - frameCount < fps) {
+				cap >> frame;
+				++frameCount;
+			}
+			if (newFrameCount < frameCount && frameCount - newFrameCount < fps) {
+				long double seconds = (frameCount - newFrameCount) / fps;
+				std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
+			}
 		}
 
 		// Match the global time.
 		while (restart || abs(newFrameCount - frameCount) >= fps) {
 			// Fast catching up if difference isn't big.
 			bool skip = false;
-			while (newFrameCount > frameCount && newFrameCount - frameCount < fps) {
-				cap >> frame;
-				++frameCount;
-				skip = true;
-			}
-			if (newFrameCount < frameCount && frameCount - newFrameCount < fps) {
-				long double seconds = (frameCount - newFrameCount) / fps;
-				std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
-				skip = true;
+			if (!restart) {
+				while (newFrameCount > frameCount && newFrameCount - frameCount < fps) {
+					cap >> frame;
+					++frameCount;
+					skip = true;
+				}
+				if (newFrameCount < frameCount && frameCount - newFrameCount < fps) {
+					long double seconds = (frameCount - newFrameCount) / fps;
+					std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
+					skip = true;
+				}
 			}
 			if (skip) break;
 
@@ -263,8 +267,8 @@ void getInputs() {
 }
 
 void audioPlayer(std::string fileName) {
-	sf::Music music;
 	if (!playAudio) return;
+	sf::Music music;
 	if (!music.openFromFile(fileName)) {
 		std::cout << "Error opening audio file" << std::endl;
 		exit(1);
@@ -294,7 +298,6 @@ void signal_callback_handler(int signum) {
 	system("tput reset");
     exit(signum);
 }
-
 
 int main(int argc, char **argv) {
 	signal(SIGINT, signal_callback_handler);
