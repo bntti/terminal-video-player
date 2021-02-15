@@ -32,6 +32,7 @@ int colorThreshold = 0;
 bool playAudio = true;
 bool loop = false;
 bool debug = false;
+bool center = false;
 
 void createFrames(cv::VideoCapture cap) {
 	int currentBuffer = 0;
@@ -126,12 +127,16 @@ void createFrames(cv::VideoCapture cap) {
 			prevLines = (int)lines;
 			prevCols = (int)cols;
 		}
+		int currentLine = ((lines + 1) - height) / 2 + 2;
+		int startColumn = (cols - width) / 2;
 		buffer[currentBuffer] += "\33[0;0H";
 
 		int i = 0;
 		int len = statusText.length();
 		// Create frame.
 		for (int y = 0; y < height; ++y) {
+			if (center) buffer[currentBuffer] += "\33[" + std::to_string(currentLine) + ";" + std::to_string(startColumn) + "H";
+			++currentLine;
 			for (int x = 0; x < width; ++x) {
 				int b = frame.at<cv::Vec3b>(y, x)[0];
 				int g = frame.at<cv::Vec3b>(y, x)[1];
@@ -156,7 +161,7 @@ void createFrames(cv::VideoCapture cap) {
 				}
 				buffer[currentBuffer] += c;
 			}
-			buffer[currentBuffer] += "\n";
+			if (!center) buffer[currentBuffer] += "\n";
 		}
 		++frameCount;
 
@@ -284,8 +289,7 @@ int main(int argc, char **argv) {
 					playAudio = false;
 					break;
 				case 'c':
-					colorThreshold = atoi(argv[i+1]);
-					skip = true;
+					center = true;
 					break;
 				case 'd':
 					debug = true;
@@ -299,6 +303,10 @@ int main(int argc, char **argv) {
 				case 's':
 					showStatusText = false;
 					break;
+				case 't':
+					colorThreshold = atoi(argv[i+1]);
+					skip = true;
+					break;
 				default:
 					std::cout << "Invalid argument: '-" << argv[i][j] << "'" << std::endl;
 					exit(1);
@@ -309,11 +317,12 @@ int main(int argc, char **argv) {
 	if (help || fileName == "") {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
 		std::cout << "\t'-a' | Disable audio.\n";
-		std::cout << "\t'-c <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
+		std::cout << "\t'-c' | Center video.\n";
 		std::cout << "\t'-d' | Enable debug prints.\n";
 		std::cout << "\t'-h' | Show this menu and exit.\n";
 		std::cout << "\t'-l' | Loop video.\n";
 		std::cout << "\t'-s' | Disable status text.\n";
+		std::cout << "\t'-t <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
 		std::cout << "\n";
 		std::cout << "Player controls:\n";
 		std::cout << "\t'j' | Skip backward by 5 seconds.\n";
@@ -393,6 +402,7 @@ int main(int argc, char **argv) {
 	cap.release();
 
 	// Reset terminal.
+	std::cout << "\n";
 	system("tput reset");
 
 	exit(0);
