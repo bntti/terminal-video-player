@@ -18,6 +18,7 @@ A hardware accelerated terminal (for example [alacritty](https://github.com/alac
 | `-a`                   | Disable audio.                                                                                            |
 | `-c <color threshold>` | Threshold for changing color. Bigger values result in better performance but lower quality. 0 by default. |
 | `-h`                   | Show this menu and exit.                                                                                  |
+| `-l`                   | Loop video.                                                                                               |
 | `-s`                   | Disable status text.                                                                                      |
 
 #### Player controls
@@ -27,3 +28,4 @@ A hardware accelerated terminal (for example [alacritty](https://github.com/alac
 | `k`     | Pause.                     |
 | `l`     | Skip forward by 5 seconds. |
 | `q`     | Exit.                      |
+| `r`     | Restart video.             |

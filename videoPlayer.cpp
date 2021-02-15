@@ -11,9 +11,6 @@
 #include <vector>
 #include <termios.h>
 
-// Global variables.
-auto StartTime = std::chrono::steady_clock::now();
-
 // Global clock.
 auto globalTime = std::chrono::steady_clock::now();
 
@@ -30,6 +27,7 @@ bool videoPaused = false;
 bool showStatusText = true;
 int colorThreshold = 0;
 bool playAudio = true;
+bool loop = false;
 
 void createFrames(cv::VideoCapture cap) {
 	int currentBuffer = 0;
@@ -51,7 +49,7 @@ void createFrames(cv::VideoCapture cap) {
 		long double newFrameCount = currentTimeS * fps;
 
 		// Match the global time.
-		while (abs(newFrameCount - frameCount) > fps) {
+		while (abs(newFrameCount - frameCount) >= fps/2) {
 			cap.set(cv::CAP_PROP_POS_FRAMES, (int)newFrameCount);
 			frameCount = newFrameCount;
 			currentTimeS = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalTime).count() / 1000.0;
@@ -62,6 +60,10 @@ void createFrames(cv::VideoCapture cap) {
 		cap >> frame;
 
 		if (frame.empty()) {
+			if (loop) {
+				globalTime = std::chrono::steady_clock::now();
+				continue;
+			}
 			stopProgram = true;
 			return;
 		}
@@ -212,6 +214,9 @@ void getInputs() {
 			case 'q':
 				stopProgram = true;
 				return;
+			case 'r':
+				globalTime = std::chrono::steady_clock::now();
+				break;
 			default:
 				break;
 		}
@@ -270,6 +275,9 @@ int main(int argc, char **argv) {
 				case 'h':
 					help = true;
 					break;
+				case 'l':
+					loop = true;
+					break;
 				case 's':
 					showStatusText = false;
 					break;
@@ -285,6 +293,7 @@ int main(int argc, char **argv) {
 		std::cout << "\t'-a' | Disable audio.\n";
 		std::cout << "\t'-c <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
 		std::cout << "\t'-h' | Show this menu and exit.\n";
+		std::cout << "\t'-l' | Loop video.\n";
 		std::cout << "\t'-s' | Disable status text.\n";
 		std::cout << "\n";
 		std::cout << "Player controls:\n";
@@ -292,6 +301,7 @@ int main(int argc, char **argv) {
 		std::cout << "\t'k' | Pause.\n";
 		std::cout << "\t'l' | Skip forward by 5 seconds.\n";
 		std::cout << "\t'q' | Exit.\n";
+		std::cout << "\t'r' | Restart video.\n";
 		exit(0);
 	}
 
@@ -330,8 +340,7 @@ int main(int argc, char **argv) {
 	tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
 	// Set time 0 to now.
-	StartTime = std::chrono::steady_clock::now();
-	globalTime = StartTime;
+	globalTime = std::chrono::steady_clock::now();
 
 	// Start threads.
 	std::thread audioThread(audioPlayer, "audio.ogg");
