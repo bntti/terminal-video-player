@@ -25,9 +25,10 @@ bool printDone[2];
 bool stopProgram = false;
 bool videoPaused = false;
 bool restart = false;
+bool clear = false;
 
 // Global variables set by flags.
-bool showStatusText = true;
+bool showStatusText = false;
 int colorThreshold = 0;
 bool playAudio = true;
 bool loop = false;
@@ -145,11 +146,12 @@ void createFrames(cv::VideoCapture cap) {
 		}
 
 		buffer[currentBuffer] = "";
-		if ((int)lines != prevLines || (int)cols != prevCols) {
+		if (clear || (int)lines != prevLines || (int)cols != prevCols) {
 			buffer[currentBuffer] += "\33[0m\33[3J\33[2J";
 			prevR = 1e9;
 			prevLines = (int)lines;
 			prevCols = (int)cols;
+			clear = false;
 		}
 		int currentLine = ((lines + 1) - height) / 2 + 2;
 		int startColumn = (cols - width) / 2;
@@ -224,6 +226,10 @@ void getInputs() {
 	while(1) {
 		char c = getc(stdin);
 		switch(c) {
+			case 'c':
+				center = !center;
+				clear = true;
+				break;
 			case 'j':
 				globalTime += std::chrono::seconds(5);
 				currentTime = std::chrono::steady_clock::now();
@@ -246,6 +252,9 @@ void getInputs() {
 			case 'r':
 				restart = true;
 				globalTime = std::chrono::steady_clock::now();
+				break;
+			case 's':
+				showStatusText = !showStatusText;
 				break;
 			default:
 				break;
@@ -306,9 +315,6 @@ int main(int argc, char **argv) {
 				case 'a':
 					playAudio = false;
 					break;
-				case 'c':
-					center = true;
-					break;
 				case 'd':
 					debug = true;
 					break;
@@ -317,9 +323,6 @@ int main(int argc, char **argv) {
 					break;
 				case 'l':
 					loop = true;
-					break;
-				case 's':
-					showStatusText = false;
 					break;
 				case 't':
 					colorThreshold = atoi(argv[i+1]);
@@ -335,19 +338,19 @@ int main(int argc, char **argv) {
 	if (help || fileName == "") {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
 		std::cout << "\t'-a' | Disable audio.\n";
-		std::cout << "\t'-c' | Center video.\n";
 		std::cout << "\t'-d' | Enable debug prints.\n";
 		std::cout << "\t'-h' | Show this menu and exit.\n";
 		std::cout << "\t'-l' | Loop video.\n";
-		std::cout << "\t'-s' | Disable status text.\n";
 		std::cout << "\t'-t <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
 		std::cout << "\n";
 		std::cout << "Player controls:\n";
+		std::cout << "\t'c' | Toggle center video.\n";
 		std::cout << "\t'j' | Skip backward by 5 seconds.\n";
 		std::cout << "\t'k' | Pause.\n";
 		std::cout << "\t'l' | Skip forward by 5 seconds.\n";
 		std::cout << "\t'q' | Exit.\n";
-		std::cout << "\t'r' | Restart video." << std::endl;
+		std::cout << "\t'r' | Restart video.\n";
+		std::cout << "\t's' | Toggle status text.\n";
 		exit(0);
 	}
 
