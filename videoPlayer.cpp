@@ -11,6 +11,12 @@
 #include <vector>
 #include <termios.h>
 
+// Global variables.
+auto StartTime = std::chrono::steady_clock::now();
+
+// Global clock.
+auto globalTime = std::chrono::steady_clock::now();
+
 // Communication between print and createFrames threads.
 std::string buffer[2];
 bool frameDone[2];
@@ -19,23 +25,19 @@ bool printDone[2];
 // Communication between all threads.
 bool stopProgram = false;
 bool videoPaused = false;
-int skipTime[2];
 
 // Global variables set by flags.
 bool showStatusText = true;
-long double fpsCap = 1e9;
 int colorThreshold = 0;
 bool playAudio = true;
 
-void createFrames(cv::VideoCapture cap, int threadID) {
+void createFrames(cv::VideoCapture cap) {
 	int currentBuffer = 0;
 
 	// Create variables.
-	auto startTime = std::chrono::steady_clock::now();
 	auto frameStart = std::chrono::steady_clock::now();
 	std::vector<long double> frameTimes;
 	long double frameCount = 0;
-	long double frameCount2 = 0;
 	long double fps = cap.get(cv::CAP_PROP_FPS);
 	cv::Mat frame;
 	int prevR = 1e5;
@@ -44,24 +46,20 @@ void createFrames(cv::VideoCapture cap, int threadID) {
 	int prevLines = 0;
 	int prevCols = 0;
 	while (1) {
-		if (skipTime[threadID] != 0) {
-			long double increase = skipTime[threadID];
-			if (frameCount < fps * -increase) increase = -frameCount / fps;
-			frameCount += (int)(fps * increase);
-			frameCount2 += (int)(fpsCap * increase);
-			startTime -= std::chrono::milliseconds((int)(increase * 1000));
-			cap.set(cv::CAP_PROP_POS_FRAMES, frameCount);
-			skipTime[threadID] = 0;
+		// Catch up with the video.
+		long double currentTimeS = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalTime).count() / 1000.0;
+		long double newFrameCount = currentTimeS * fps;
+
+		// Match the global time.
+		while (abs(newFrameCount - frameCount) > fps) {
+			cap.set(cv::CAP_PROP_POS_FRAMES, (int)newFrameCount);
+			frameCount = newFrameCount;
+			currentTimeS = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalTime).count() / 1000.0;
+			newFrameCount = currentTimeS * fps;
 		}
+
 		// Read frame.
 		cap >> frame;
-
-		long double frameTime = frameCount / fps;
-		long double frameTime2 = frameCount2 / fpsCap;
-		if (frameTime2 > frameTime) {
-			++frameCount;
-			continue;
-		}
 
 		// Calculate terminal size.
 		struct winsize w;
@@ -93,8 +91,8 @@ void createFrames(cv::VideoCapture cap, int threadID) {
 			statusText += "Res: " + std::to_string((int)width) + "x" + std::to_string((int)(fac * height));
 
 			// Calculate framerate.
-			auto end = std::chrono::steady_clock::now();
-			long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - frameStart).count();
+			auto currentTime = std::chrono::steady_clock::now();
+			long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - frameStart).count();
 			frameStart = std::chrono::steady_clock::now();
 			frameTimes.push_back(milliseconds);
 
@@ -106,10 +104,6 @@ void createFrames(cv::VideoCapture cap, int threadID) {
 				sum += frameTimes[i];
 			}
 			statusText += "|fps: " + std::to_string((int)(1000 / (sum / amount)));
-
-			// Calculate how much the player is behind the original video.
-			milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - startTime).count();
-			statusText += "|behind by: " + std::to_string((int)std::max((long double)0, (1000 * (milliseconds / 1000 - frameCount / fps)))) + "ms";
 		}
 
 		buffer[currentBuffer] = "";
@@ -152,44 +146,36 @@ void createFrames(cv::VideoCapture cap, int threadID) {
 			buffer[currentBuffer] += "\n";
 		}
 		++frameCount;
-		++frameCount2;
+
+		// Check if the player should sleep.
+		auto currentTime = std::chrono::steady_clock::now();
+		long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - globalTime).count();
+		long double sleepDuration = frameCount / fps - milliseconds / 1000;
+		if (0.1 > sleepDuration && sleepDuration > 0) std::this_thread::sleep_for(std::chrono::milliseconds((int)(sleepDuration * 1000)));
 
 		frameDone[currentBuffer] = true;
 		printDone[currentBuffer] = false;
 		currentBuffer = (currentBuffer + 1) % 2;
 		while (1) {
 			if (stopProgram) return;
-			if (videoPaused) startTime += std::chrono::milliseconds(1);
 			if (!videoPaused && printDone[currentBuffer]) break;
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 	}
 }
 
-void print(cv::VideoCapture cap) {
+void print() {
 	int currentBuffer = 0;
 
-	// Create variables.
-	long double fps = cap.get(cv::CAP_PROP_FPS);
-	long double frameCount = 0;
-	auto startTime = std::chrono::steady_clock::now();
 	while (1) {
 		while (1) {
 			if (stopProgram) return;
-			if (videoPaused) startTime += std::chrono::milliseconds(1);
 			if (!videoPaused && frameDone[currentBuffer]) break;
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		}
 
-		// Check if the player should sleep.
-		auto end = std::chrono::steady_clock::now();
-		long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(end - startTime).count();
-		long double sleepDuration = frameCount / std::min(fps, (long double)fpsCap) - milliseconds/1000;
-		if (sleepDuration > 0) std::this_thread::sleep_for(std::chrono::milliseconds((int)(sleepDuration*1000)));
-
 		// Print frame.
 		printf(buffer[currentBuffer].c_str());
-		++frameCount;
 		printDone[currentBuffer] = true;
 		frameDone[currentBuffer] = false;
 		currentBuffer = (currentBuffer + 1) % 2;
@@ -197,17 +183,26 @@ void print(cv::VideoCapture cap) {
 }
 
 void getInputs() {
+	auto pauseTime = std::chrono::steady_clock::now();
+	auto currentTime = std::chrono::steady_clock::now();
 	while(1) {
 		char c = getc(stdin);
 		switch(c) {
 			case 'j':
-				for (int& x : skipTime) x -= 5;
+				globalTime += std::chrono::seconds(5);
+				currentTime = std::chrono::steady_clock::now();
+				if (std::chrono::operator>(globalTime, currentTime)) globalTime = currentTime;
 				break;
 			case 'k':
+				if (videoPaused) {
+					currentTime = std::chrono::steady_clock::now();
+					int milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - pauseTime).count();
+					globalTime += std::chrono::milliseconds(milliseconds);
+				} else pauseTime = std::chrono::steady_clock::now();
 				videoPaused = !videoPaused;
 				break;
 			case 'l':
-				for (int& x : skipTime) x += 5;
+				globalTime -= std::chrono::seconds(5);
 				break;
 			case 'q':
 				stopProgram = true;
@@ -218,7 +213,7 @@ void getInputs() {
 	}
 }
 
-void audioPlayer(std::string fileName, int threadID) {
+void audioPlayer(std::string fileName) {
 	sf::Music music;
 	if (!playAudio) return;
 	if (!music.openFromFile(fileName)) {
@@ -233,12 +228,13 @@ void audioPlayer(std::string fileName, int threadID) {
 		if (stopProgram) return;
 		if (videoPaused && music.getStatus() == music.Playing) music.pause();
 		if (!videoPaused && music.getStatus() == music.Paused) music.play();
-		if (skipTime[threadID] != 0) {
-			sf::Time current = music.getPlayingOffset();
-			current += sf::seconds(skipTime[threadID]);
-			if (current.asSeconds() <= 0) current = current.Zero;
+		int currentPosition = music.getPlayingOffset().asMilliseconds();
+		int currentTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalTime).count();
+		while (abs(currentPosition - currentTimeMs) > 1000) {
+			sf::Time current = sf::milliseconds(currentTimeMs);
 			music.setPlayingOffset(current);
-			skipTime[threadID] = 0;
+			currentPosition = music.getPlayingOffset().asMilliseconds();
+			currentTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalTime).count();
 		}
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -266,10 +262,6 @@ int main(int argc, char **argv) {
 					colorThreshold = atoi(argv[i+1]);
 					skip = true;
 					break;
-				case 'f':
-					fpsCap = atof(argv[i+1]);
-					skip = true;
-					break;
 				case 'h':
 					help = true;
 					break;
@@ -287,7 +279,6 @@ int main(int argc, char **argv) {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
 		std::cout << "\t'-a' | Disable audio.\n";
 		std::cout << "\t'-c <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
-		std::cout << "\t'-f <fps>' | Set fps cap.\n";
 		std::cout << "\t'-h' | Show this menu and exit.\n";
 		std::cout << "\t'-s' | Disable status text.\n";
 		std::cout << "\n";
@@ -325,7 +316,7 @@ int main(int argc, char **argv) {
 	}
 
 	// Hide cursor.
-	printf("\33[?25l");
+	std::cout << "\33[?25l";
 
 	// Don't wait for newline when asking for input.
 	static struct termios newt;
@@ -333,10 +324,14 @@ int main(int argc, char **argv) {
 	newt.c_lflag &= ~(ICANON | ECHO);
 	tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
+	// Set time 0 to now.
+	StartTime = std::chrono::steady_clock::now();
+	globalTime = StartTime;
+
 	// Start threads.
-	std::thread audioThread(audioPlayer, "audio.ogg", 0);
-	std::thread printThread(print, cap);
-	std::thread bufferThread(createFrames, cap, 1);
+	std::thread audioThread(audioPlayer, "audio.ogg");
+	std::thread printThread(print);
+	std::thread bufferThread(createFrames, cap);
 	std::thread inputThread(getInputs);
 
 	// Join threads.

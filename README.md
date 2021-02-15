@@ -17,7 +17,6 @@ A hardware accelerated terminal (for example [alacritty](https://github.com/alac
 | ---------------------- | --------------------------------------------------------------------------------------------------------- |
 | `-a`                   | Disable audio.                                                                                            |
 | `-c <color threshold>` | Threshold for changing color. Bigger values result in better performance but lower quality. 0 by default. |
-| `-f <fps>`             | Set fps cap.                                                                                              |
 | `-h`                   | Show this menu and exit.                                                                                  |
 | `-s`                   | Disable status text.                                                                                      |
 
