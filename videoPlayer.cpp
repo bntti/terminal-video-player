@@ -10,6 +10,8 @@
 #include <thread>
 #include <vector>
 #include <termios.h>
+#include <cstdlib>
+#include <signal.h>
 
 // Global clock.
 auto globalTime = std::chrono::steady_clock::now();
@@ -29,6 +31,7 @@ bool showStatusText = true;
 int colorThreshold = 0;
 bool playAudio = true;
 bool loop = false;
+bool debug = false;
 
 void createFrames(cv::VideoCapture cap) {
 	int currentBuffer = 0;
@@ -232,9 +235,9 @@ void audioPlayer(std::string fileName) {
 	if (!playAudio) return;
 	if (!music.openFromFile(fileName)) {
 		std::cout << "Error opening audio file" << std::endl;
-		exit(-1);
+		exit(1);
 	}
-	std::cout << "Deleteting " << fileName << std::endl;
+	if (debug) std::cout << "Deleteting " << fileName << std::endl;
 	remove(fileName.c_str());
 
 	music.play();
@@ -255,7 +258,15 @@ void audioPlayer(std::string fileName) {
 	}
 }
 
+void signal_callback_handler(int signum) {
+	system("tput reset");
+    exit(signum);
+}
+
+
 int main(int argc, char **argv) {
+	signal(SIGINT, signal_callback_handler);
+
 	std::string fileName = "";
 	bool help = false;
 
@@ -276,6 +287,9 @@ int main(int argc, char **argv) {
 					colorThreshold = atoi(argv[i+1]);
 					skip = true;
 					break;
+				case 'd':
+					debug = true;
+					break;
 				case 'h':
 					help = true;
 					break;
@@ -286,8 +300,8 @@ int main(int argc, char **argv) {
 					showStatusText = false;
 					break;
 				default:
-					std::cout << "Invalid argument: -" << argv[i][j] << '\n';
-					exit(0);
+					std::cout << "Invalid argument: '-" << argv[i][j] << "'" << std::endl;
+					exit(1);
 			}
 		}
 		if (skip) ++i;
@@ -296,6 +310,7 @@ int main(int argc, char **argv) {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
 		std::cout << "\t'-a' | Disable audio.\n";
 		std::cout << "\t'-c <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
+		std::cout << "\t'-d' | Enable debug prints.\n";
 		std::cout << "\t'-h' | Show this menu and exit.\n";
 		std::cout << "\t'-l' | Loop video.\n";
 		std::cout << "\t'-s' | Disable status text.\n";
@@ -305,7 +320,7 @@ int main(int argc, char **argv) {
 		std::cout << "\t'k' | Pause.\n";
 		std::cout << "\t'l' | Skip forward by 5 seconds.\n";
 		std::cout << "\t'q' | Exit.\n";
-		std::cout << "\t'r' | Restart video.\n";
+		std::cout << "\t'r' | Restart video." << std::endl;
 		exit(0);
 	}
 
@@ -318,19 +333,34 @@ int main(int argc, char **argv) {
 	// Check if video is open.
 	if (!cap.isOpened()) {
 		std::cout << "Error opening video stream or file" << std::endl;
-		exit(-1);
+		exit(1);
 	}
 
 	// Play audio.
 	if (playAudio) {
-		std::cout << "Extraction audio" << std::endl;
-		std::string command = "ffmpeg -y -i \"" + fileName + "\" tmp.mp3 &> /dev/null";
-		std::cout << command << std::endl;
-		system(command.c_str());
-		command = "ffmpeg -y -i tmp.mp3 audio.ogg &> /dev/null";
-		std::cout << command << std::endl;
-		system(command.c_str());
-		std::cout << "Deleteting tmp.mp3" << std::endl;
+		// mp4 -> mp3 conversion.
+		std::cout << "Extracting audio..." << std::endl;
+		std::string command = "ffmpeg -y -i \"" + fileName + "\" tmp.mp3";
+		if (!debug) command +=  " &> /dev/null";
+		std::cout << "1/2" << std::endl;
+		if (debug) std::cout << "Running command: " << command << std::endl;
+		int rc = system(command.c_str());
+		if (rc != 0) {
+			std::cout << "ffmpeg returned: " << rc << ". Exiting..." << std::endl;
+			exit(1);
+		}
+
+		// mp3 -> ogg conversion.
+		command = "ffmpeg -y -i tmp.mp3 audio.ogg";
+		if (!debug) command +=  " &> /dev/null";
+		std::cout << "2/2" << std::endl;
+		if (debug) std::cout << "Running command: " << command << std::endl;
+		rc = system(command.c_str());
+		if (rc != 0) {
+			std::cout << "ffmpeg returned: " << rc << ". Exiting..." << std::endl;
+			exit(1);
+		}
+		if (debug) std::cout << "Deleteting tmp.mp3" << std::endl;
 		remove("tmp.mp3");
 	}
 
@@ -365,5 +395,5 @@ int main(int argc, char **argv) {
 	// Reset terminal.
 	system("tput reset");
 
-	return 0;
+	exit(0);
 }
