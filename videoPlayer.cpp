@@ -53,8 +53,32 @@ void createFrames(cv::VideoCapture cap) {
 		long double currentTimeS = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - globalTime).count() / 1000.0;
 		long double newFrameCount = currentTimeS * fps;
 
+		// Fast catching up if difference isn't big.
+		while (newFrameCount > frameCount && newFrameCount - frameCount < fps) {
+			cap >> frame;
+			++frameCount;
+		}
+		if (newFrameCount < frameCount && frameCount - newFrameCount < fps) {
+			long double seconds = (frameCount - newFrameCount) / fps;
+			std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
+		}
+
 		// Match the global time.
-		while (restart || abs(newFrameCount - frameCount) > fps) {
+		while (restart || abs(newFrameCount - frameCount) >= fps) {
+			// Fast catching up if difference isn't big.
+			bool skip = false;
+			while (newFrameCount > frameCount && newFrameCount - frameCount < fps) {
+				cap >> frame;
+				++frameCount;
+				skip = true;
+			}
+			if (newFrameCount < frameCount && frameCount - newFrameCount < fps) {
+				long double seconds = (frameCount - newFrameCount) / fps;
+				std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
+				skip = true;
+			}
+			if (skip) break;
+
 			restart = false;
 			cap.set(cv::CAP_PROP_POS_FRAMES, (int)newFrameCount);
 			frameCount = newFrameCount;
@@ -164,12 +188,6 @@ void createFrames(cv::VideoCapture cap) {
 			if (!center) buffer[currentBuffer] += "\n";
 		}
 		++frameCount;
-
-		// Check if the player should sleep.
-		auto currentTime = std::chrono::steady_clock::now();
-		long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - globalTime).count();
-		long double sleepDuration = frameCount / fps - milliseconds / 1000;
-		if (0.1 > sleepDuration && sleepDuration > 0) std::this_thread::sleep_for(std::chrono::milliseconds((int)(sleepDuration * 1000)));
 
 		frameDone[currentBuffer] = true;
 		printDone[currentBuffer] = false;
