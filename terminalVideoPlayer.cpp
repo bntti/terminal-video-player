@@ -109,12 +109,20 @@ void createFrames(cv::VideoCapture cap) {
 		ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 		long double lines = w.ws_row;
 		long double cols = w.ws_col;
+		long double terminalHeight = w.ws_ypixel;
+		long double terminalWidth = w.ws_xpixel;
+
+		// If terminal size is unavailable assume that it is 16:9.
+		if (terminalWidth == 0 || terminalHeight == 0) {
+			terminalHeight = 9;
+			terminalWidth = 16;
+		}
 
 		// Remove 1 from lines to prevent too many newlines.
 		lines -= 1;
 
-		// Calculate font aspect ratio. (Assumes that terminal aspect ratio is 16:9).
-		long double fac = (cols * 9) / (lines * 16);
+		// Calculate font aspect ratio.
+		long double fac = (cols * terminalHeight) / (lines * terminalWidth);
 
 		// Calculate new width and height by scaling to terminal resolution (columns x lines).
 		long double width = frame.size().width;
