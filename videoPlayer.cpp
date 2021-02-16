@@ -269,6 +269,7 @@ void getInputs() {
 void audioPlayer(std::string fileName) {
 	if (!playAudio) return;
 	sf::Music music;
+	clear = true;
 	if (!music.openFromFile(fileName)) {
 		std::cout << "Error opening audio file" << std::endl;
 		exit(1);
