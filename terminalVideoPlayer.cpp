@@ -33,7 +33,7 @@ int colorThreshold = 0;
 bool playAudio = true;
 bool loop = false;
 bool debug = false;
-bool center = false;
+bool center = true;
 
 void createFrames(cv::VideoCapture cap) {
 	int currentBuffer = 0;
@@ -274,14 +274,40 @@ void getInputs() {
 	}
 }
 
+void extractAudio(std::string fileName) {
+	if (!playAudio) return;
+	// mp4 -> wav conversion.
+	std::string command = "ffmpeg -y -i \"" + fileName + "\" audio.wav";
+	if (!debug) command +=  " &> /dev/null";
+	if (debug) std::cout << command << std::endl;
+	int rc = system(command.c_str());
+	if (rc != 0) {
+		if (!debug) system("tput reset");
+		std::cout << "ffmpeg returned: " << rc << ". Exiting..." << std::endl;
+		exit(1);
+	}
+}
+
 void audioPlayer(std::string fileName) {
 	if (!playAudio) return;
 	sf::Music music;
+
+	// Try to open audio and wait for audio extraction.
 	clear = true;
+	int sleepAmount = 0;
+	videoPaused = true;
+	while (!music.openFromFile(fileName)) {
+		if (sleepAmount > 10) break;
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		++sleepAmount;
+	}
+	videoPaused = false;
+
 	if (!music.openFromFile(fileName)) {
 		std::cout << "Error opening audio file" << std::endl;
 		exit(1);
 	}
+
 	if (debug) std::cout << "Deleteting " << fileName << std::endl;
 	remove(fileName.c_str());
 
@@ -379,34 +405,6 @@ int main(int argc, char **argv) {
 		exit(1);
 	}
 
-	// Play audio.
-	if (playAudio) {
-		// mp4 -> mp3 conversion.
-		std::cout << "Extracting audio..." << std::endl;
-		std::string command = "ffmpeg -y -i \"" + fileName + "\" tmp.mp3";
-		if (!debug) command +=  " &> /dev/null";
-		std::cout << "1/2" << std::endl;
-		if (debug) std::cout << "Running command: " << command << std::endl;
-		int rc = system(command.c_str());
-		if (rc != 0) {
-			std::cout << "ffmpeg returned: " << rc << ". Exiting..." << std::endl;
-			exit(1);
-		}
-
-		// mp3 -> ogg conversion.
-		command = "ffmpeg -y -i tmp.mp3 audio.ogg";
-		if (!debug) command +=  " &> /dev/null";
-		std::cout << "2/2" << std::endl;
-		if (debug) std::cout << "Running command: " << command << std::endl;
-		rc = system(command.c_str());
-		if (rc != 0) {
-			std::cout << "ffmpeg returned: " << rc << ". Exiting..." << std::endl;
-			exit(1);
-		}
-		if (debug) std::cout << "Deleteting tmp.mp3" << std::endl;
-		remove("tmp.mp3");
-	}
-
 	// Hide cursor.
 	std::cout << "\33[?25l";
 
@@ -420,7 +418,8 @@ int main(int argc, char **argv) {
 	globalTime = std::chrono::steady_clock::now();
 
 	// Start threads.
-	std::thread audioThread(audioPlayer, "audio.ogg");
+	std::thread extractAudioThread(extractAudio, fileName);
+	std::thread audioThread(audioPlayer, "audio.wav");
 	std::thread printThread(print);
 	std::thread bufferThread(createFrames, cap);
 	std::thread inputThread(getInputs);
@@ -430,8 +429,9 @@ int main(int argc, char **argv) {
 	printThread.join();
 	audioThread.join();
 	
-	// Detach input thread because it may be stuck waiting for input.
+	// Detach threads.
 	inputThread.detach();
+	extractAudioThread.detach();
 
 	cap.release();
 

@@ -1,6 +1,5 @@
 tplayer
 .vscode
 *.mp4
-*.mp3
-*.ogg
+*.wav
 *.gif
