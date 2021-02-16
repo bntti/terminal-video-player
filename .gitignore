@@ -1,6 +1,6 @@
-*
-!**/
-!*.*
+tplayer
 .vscode
 *.mp4
-a.out
+*.mp3
+*.ogg
+*.gif
