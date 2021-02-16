@@ -280,6 +280,7 @@ void audioPlayer(std::string fileName) {
 	music.play();
 	while (1) {
 		if (stopProgram) return;
+		if (music.getStatus() == music.Stopped) music.play();
 		if (videoPaused && music.getStatus() == music.Playing) music.pause();
 		if (!videoPaused && music.getStatus() == music.Paused) music.play();
 		int currentPosition = music.getPlayingOffset().asMilliseconds();
