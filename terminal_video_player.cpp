@@ -167,9 +167,9 @@ void createFrames(cv::VideoCapture cap) {
 			prev_cols = (int)cols;
 			clear = false;
 		}
-		int current_line = ((lines + 1) - height) / 2 + 2;
-		int start_column = (cols - width) / 2;
-		buffer[current_buffer] += "\33[0;0H";
+		int current_line = ((lines + 1) - height) / 2 + 1;
+		int start_column = (cols - width) / 2 + 1;
+		buffer[current_buffer] += "\33[1;1H";
 
 		int i = 0;
 		int len = status_text.length();
@@ -284,8 +284,11 @@ void extractAudio(std::string file_name) {
 	if (debug) std::cout << command << std::endl;
 	int return_code = system(command.c_str());
 	if (return_code != 0) {
-		if (!debug) system("tput reset");
-		std::cout << "ffmpeg returned: " << return_code << ". Exiting..." << std::endl;
+		if (!debug) {
+			std::cout << "\n";
+			system("tput reset");
+		}
+		if (return_code != 65280) std::cout << "ffmpeg returned: " << return_code << ". Exiting..." << std::endl;
 		exit(1);
 	}
 }
@@ -333,6 +336,7 @@ void audioPlayer(std::string file_name) {
 }
 
 void signal_callback_handler(int signum) {
+	std::cout << "\n";
 	system("tput reset");
     exit(signum);
 }
