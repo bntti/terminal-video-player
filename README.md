@@ -13,13 +13,14 @@ Usage: `./tplayer <args> <filename>`
 A hardware accelerated terminal (for example [alacritty](https://github.com/alacritty/alacritty)) is recommended for better performance. 
 
 #### Runtime flags:
-| Flag                   | Description                                                                                               |
-| ---------------------- | --------------------------------------------------------------------------------------------------------- |
-| `-a`                   | Disable audio.                                                                                            |
-| `-d`                   | Enable debug prints.                                                                                      |
-| `-h`                   | Show this menu and exit.                                                                                  |
-| `-l`                   | Loop video.                                                                                               |
-| `-t <color threshold>` | Threshold for changing color. Bigger values result in better performance but lower quality. 0 by default. |
+| Flag                   | Description                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `-a`                   | Disable audio.                                                                                                                           |
+| `-d`                   | Enable debug prints.                                                                                                                     |
+| `-f <color threshold>` | Threshold for updating pixel. Bigger values result in better performance but lower quality. Use negative value to disable. 0 By default. |
+| `-h`                   | Show this menu and exit.                                                                                                                 |
+| `-l`                   | Loop video.                                                                                                                              |
+| `-t <color threshold>` | Threshold for changing color. Bigger values result in better performance but lower quality. 0 by default.                                |
 
 #### Player controls
 | Control | Description                |

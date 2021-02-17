@@ -32,10 +32,14 @@ bool clear = false;
 // Global variables set by flags.
 bool show_status_text = false;
 int color_threshold = 0;
+int frame_threshold = 0;
 bool play_audio = true;
 bool loop = false;
 bool debug = false;
 bool center = true;
+
+// CreateFrames variable.
+int previous_frame[4096][2160];
 
 void createFrames(cv::VideoCapture cap) {
 	int current_buffer = 0;
@@ -46,11 +50,12 @@ void createFrames(cv::VideoCapture cap) {
 	long double frame_count = 0;
 	long double fps = cap.get(cv::CAP_PROP_FPS);
 	cv::Mat frame;
-	int prev_r = 1e9;
+	int prev_r = 0;
 	int prev_g = 0;
 	int prev_b = 0;
 	int prev_lines = 0;
 	int prev_cols = 0;
+	int prev_len = 0;
 	while (1) {
 		// Catch up with the video.
 		long double current_time_s = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - global_time).count() / 1000.0;
@@ -141,7 +146,8 @@ void createFrames(cv::VideoCapture cap) {
 		std::string status_text = "";
 
 		if (show_status_text) {
-			status_text += "Res: " + std::to_string((int)width) + "x" + std::to_string((int)(aspect_ratio_scale * height));
+			status_text += "Pixels: " + std::to_string((int)cols) + "x" + std::to_string((int)lines);
+			status_text += "|res: " + std::to_string((int)width) + "x" + std::to_string((int)(aspect_ratio_scale * height));	
 
 			// Calculate framerate.
 			auto current_time = std::chrono::steady_clock::now();
@@ -161,6 +167,11 @@ void createFrames(cv::VideoCapture cap) {
 
 		buffer[current_buffer] = "";
 		if (clear || (int)lines != prev_lines || (int)cols != prev_cols) {
+			if (frame_threshold >= 0) {
+				for (int y = 0; y < height; ++y) {
+					for (int x = 0; x < width; ++x) previous_frame[x][y] = 0;
+				}
+			}
 			buffer[current_buffer] += "\33[0m\33[3J\33[2J";
 			prev_r = 1e9;
 			prev_lines = (int)lines;
@@ -172,7 +183,8 @@ void createFrames(cv::VideoCapture cap) {
 		buffer[current_buffer] += "\33[1;1H";
 
 		int i = 0;
-		int len = status_text.length();
+		int status_text_len = status_text.length();
+		bool skip = false;
 		// Create frame.
 		for (int y = 0; y < height; ++y) {
 			if (center) buffer[current_buffer] += "\33[" + std::to_string(current_line) + ";" + std::to_string(start_column) + "H";
@@ -181,16 +193,32 @@ void createFrames(cv::VideoCapture cap) {
 				int b = frame.at<cv::Vec3b>(y, x)[0];
 				int g = frame.at<cv::Vec3b>(y, x)[1];
 				int r = frame.at<cv::Vec3b>(y, x)[2];
+
+				// Compare to previous frame.
+				int color = (r << 16 | g << 8 | b);
+				int prev_frame_r = (previous_frame[x][y] >> 16) & 0xFF;
+				int prev_frame_g = (previous_frame[x][y] >> 8) & 0xFF;
+				int prev_frame_b = (previous_frame[x][y]) & 0xFF;
+				if (i >= std::max(prev_len, status_text_len) && abs(r - prev_frame_r) + abs(g - prev_frame_g) + abs(b - prev_frame_b) < frame_threshold) {
+					skip = true;
+					continue;
+				} else if (skip) {
+					if (center) buffer[current_buffer] += "\33[" + std::to_string(current_line - 1) + ";" + std::to_string(start_column + x) + "H";
+					else buffer[current_buffer] += "\33[" + std::to_string(y + 1) + ";" + std::to_string(x + 1) + "H";
+				}
+				previous_frame[x][y] = color;
+
 				std::string c = " ";
-				if (i != len) {
+				if (i < status_text_len) {
 					// Invert color.
 					int inv_color = 0xFFFFFF - (r << 16 | g << 8 | b);
 					int inv_r = (inv_color >> 16) & 0xFF;
 					int inv_g = (inv_color >> 8) & 0xFF;
 					int inv_b = (inv_color) & 0xFF;
 					c = "\33[38;2;" + std::to_string(inv_r) + ";" + std::to_string(inv_g) + ";" + std::to_string(inv_b) + "m" + status_text[i];
-					++i;
 				}
+				++i;
+
 				// Add pixel to frame.
 				// Check if color should be changed.
 				if (abs(r - prev_r) + abs(g - prev_g) + abs(b - prev_b) > color_threshold) {
@@ -204,6 +232,7 @@ void createFrames(cv::VideoCapture cap) {
 			if (!center) buffer[current_buffer] += "\n";
 		}
 		++frame_count;
+		prev_len = status_text_len;
 
 		frame_done[current_buffer] = true;
 		print_done[current_buffer] = false;
@@ -363,6 +392,10 @@ int main(int argc, char **argv) {
 				case 'd':
 					debug = true;
 					break;
+				case 'f':
+					frame_threshold = atoi(argv[i+1]);
+					skip = 1;
+					break;
 				case 'h':
 					help = true;
 					break;
@@ -384,6 +417,7 @@ int main(int argc, char **argv) {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
 		std::cout << "\t'-a' | Disable audio.\n";
 		std::cout << "\t'-d' | Enable debug prints.\n";
+		std::cout << "\t'-f <color threshold>' | Threshold for changing pixel color from previous frame. Bigger values result in better performance but lower quality. Use negative value to disable. 0 By default.\n";
 		std::cout << "\t'-h' | Show this menu and exit.\n";
 		std::cout << "\t'-l' | Loop video.\n";
 		std::cout << "\t'-t <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
