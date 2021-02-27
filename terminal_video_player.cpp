@@ -401,6 +401,8 @@ int main(int argc, char **argv) {
 	}
 	if (help || file_name == "") {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
+		std::cout << "\n";
+		std::cout << "Runtime flags:\n";
 		std::cout << "\t'-a' | Disable audio.\n";
 		std::cout << "\t'-f <color threshold>' | Threshold for changing pixel color from previous frame. Bigger values result in better performance but lower quality. Use negative value to disable. 0 By default.\n";
 		std::cout << "\t'-h' | Show this menu and exit.\n";
