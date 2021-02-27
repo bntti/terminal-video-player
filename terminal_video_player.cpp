@@ -53,8 +53,8 @@ void createFrames(cv::VideoCapture cap) {
 	int prev_r = 0;
 	int prev_g = 0;
 	int prev_b = 0;
-	int prev_lines = 0;
-	int prev_cols = 0;
+	int prev_y_pixels = 0;
+	int prev_x_pixels = 0;
 	int prev_len = 0;
 	while (1) {
 		// Catch up with the video.
@@ -114,8 +114,8 @@ void createFrames(cv::VideoCapture cap) {
 		// Calculate terminal size.
 		struct winsize w;
 		ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-		long double lines = w.ws_row;
-		long double cols = w.ws_col;
+		long double terminal_y_pixels = w.ws_row;
+		long double terminal_x_pixels = w.ws_col;
 		long double terminal_height = w.ws_ypixel;
 		long double terminal_width = w.ws_xpixel;
 
@@ -125,29 +125,26 @@ void createFrames(cv::VideoCapture cap) {
 			terminal_width = 16;
 		}
 
-		// Remove 1 from lines to prevent too many newlines.
-		lines -= 1;
-
 		// Calculate font aspect ratio.
-		long double aspect_ratio_scale = (cols * terminal_height) / (lines * terminal_width);
+		long double aspect_ratio_scale = (terminal_x_pixels * terminal_height) / (terminal_y_pixels * terminal_width);
 
-		// Calculate new width and height by scaling to terminal resolution (columns x lines).
-		long double width = frame.size().width;
-		long double height = frame.size().height;
-		long double width_scale = width / cols;
-		long double height_scale = height / lines;
-		long double scale = std::max(width_scale, height_scale / aspect_ratio_scale);
-		width = std::min((int)width, (int)std::floor(frame.size().width / scale));
-		height = std::min((int)(height / aspect_ratio_scale), (int)std::floor(frame.size().height / (scale * aspect_ratio_scale)));
+		// Calculate new width and height for frame by scaling to terminal resolution.
+		long double full_frame_width = frame.size().width;
+		long double full_frame_height = frame.size().height;
+		long double width_scale = full_frame_width / terminal_x_pixels;
+		long double height_scale = full_frame_height / (terminal_y_pixels * aspect_ratio_scale);
+		long double scale = std::max(width_scale, height_scale);
 
-		// Resize frame to previously calculated width and height.
-		cv::resize(frame, frame, cv::Size(std::floor(width), std::floor(height)));
+		int frame_width = std::min(terminal_x_pixels, std::round(std::min(full_frame_width, full_frame_width / scale)));
+		int frame_height = std::min(terminal_y_pixels, std::round(std::min(full_frame_height, full_frame_height / scale) / aspect_ratio_scale));
+
+		// Resize frame.
+		cv::resize(frame, frame, cv::Size(frame_width, frame_height));
 
 		std::string status_text = "";
-
 		if (show_status_text) {
-			status_text += "Pixels: " + std::to_string((int)cols) + "x" + std::to_string((int)lines);
-			status_text += "|res: " + std::to_string((int)width) + "x" + std::to_string((int)(aspect_ratio_scale * height));	
+			status_text += "Pixels: " + std::to_string(frame_width) + "x" + std::to_string(frame_height);
+			status_text += "|res: " + std::to_string(frame_width) + "x" + std::to_string((int)std::round((frame_height * aspect_ratio_scale)));
 
 			// Calculate framerate.
 			auto current_time = std::chrono::steady_clock::now();
@@ -166,30 +163,30 @@ void createFrames(cv::VideoCapture cap) {
 		}
 
 		buffer[current_buffer] = "";
-		if (clear || (int)lines != prev_lines || (int)cols != prev_cols) {
+		if (clear || (int)terminal_y_pixels != prev_y_pixels || (int)terminal_x_pixels != prev_x_pixels) {
 			if (frame_threshold >= 0) {
-				for (int y = 0; y < height; ++y) {
-					for (int x = 0; x < width; ++x) previous_frame[x][y] = 0;
+				for (int y = 0; y < frame_height; ++y) {
+					for (int x = 0; x < frame_width; ++x) previous_frame[x][y] = 0;
 				}
 			}
 			buffer[current_buffer] += "\33[0m\33[3J\33[2J";
 			prev_r = 1e9;
-			prev_lines = (int)lines;
-			prev_cols = (int)cols;
+			prev_y_pixels = (int)terminal_y_pixels;
+			prev_x_pixels = (int)terminal_x_pixels;
 			clear = false;
 		}
-		int current_line = ((lines + 1) - height) / 2 + 1;
-		int start_column = (cols - width) / 2 + 1;
+		int current_line = (terminal_y_pixels - frame_height) / 2 + 1;
+		int start_column = (terminal_x_pixels - frame_width) / 2 + 1;
 		buffer[current_buffer] += "\33[1;1H";
 
 		int i = 0;
 		int status_text_len = status_text.length();
 		bool skip = false;
 		// Create frame.
-		for (int y = 0; y < height; ++y) {
+		for (int y = 0; y < frame_height; ++y) {
 			if (center) buffer[current_buffer] += "\33[" + std::to_string(current_line) + ";" + std::to_string(start_column) + "H";
 			++current_line;
-			for (int x = 0; x < width; ++x) {
+			for (int x = 0; x < frame_width; ++x) {
 				int b = frame.at<cv::Vec3b>(y, x)[0];
 				int g = frame.at<cv::Vec3b>(y, x)[1];
 				int r = frame.at<cv::Vec3b>(y, x)[2];
@@ -229,7 +226,7 @@ void createFrames(cv::VideoCapture cap) {
 				}
 				buffer[current_buffer] += c;
 			}
-			if (!center) buffer[current_buffer] += "\n";
+			if (!center && y != frame_height - 1) buffer[current_buffer] += "\n";
 		}
 		++frame_count;
 		prev_len = status_text_len;
