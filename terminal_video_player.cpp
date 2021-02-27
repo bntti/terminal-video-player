@@ -35,11 +35,18 @@ int color_threshold = 0;
 int frame_threshold = 0;
 bool play_audio = true;
 bool loop = false;
-bool debug = false;
 bool center = true;
 
 // CreateFrames variable.
 int previous_frame[4096][2160];
+
+void exitAndClear(int return_code, std::string exit_message="") {
+	remove("audio.wav");
+	std::cout << "\n";
+	system("tput reset");
+	if (exit_message != "") std::cout << exit_message << std::endl;
+	exit(return_code);
+}
 
 void createFrames(cv::VideoCapture cap) {
 	int current_buffer = 0;
@@ -305,21 +312,16 @@ void getInputs() {
 void extractAudio(std::string file_name) {
 	if (!play_audio) return;
 	// mp4 -> wav conversion.
-	std::string command = "ffmpeg -y -i \"" + file_name + "\" audio.wav";
-	if (!debug) command +=  " &> /dev/null";
-	if (debug) std::cout << command << std::endl;
+	std::string command = "ffmpeg -y -i \"" + file_name + "\" audio.wav &> /dev/null";
 	int return_code = system(command.c_str());
 	if (return_code != 0) {
-		if (!debug) {
-			std::cout << "\n";
-			system("tput reset");
-		}
-		if (return_code != 65280) std::cout << "ffmpeg returned: " << return_code << ". Exiting..." << std::endl;
-		exit(1);
+		std::string exit_message = "";
+		if (return_code != 65280) exit_message = "ffmpeg returned: " + std::to_string(return_code) + ". Exiting...";
+		exitAndClear(1, exit_message);
 	}
 }
 
-void audioPlayer(std::string file_name) {
+void audioPlayer() {
 	if (!play_audio) return;
 	sf::Music music;
 
@@ -327,20 +329,12 @@ void audioPlayer(std::string file_name) {
 	clear = true;
 	int sleep_count = 0;
 	video_paused = true;
-	while (!music.openFromFile(file_name)) {
-		if (sleep_count > 10) break;
+	while (!music.openFromFile("audio.wav")) {
+		if (sleep_count > 10) exitAndClear(1, "Error opening audio file");
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 		++sleep_count;
 	}
 	video_paused = false;
-
-	if (!music.openFromFile(file_name)) {
-		std::cout << "Error opening audio file" << std::endl;
-		exit(1);
-	}
-
-	if (debug) std::cout << "Deleteting " << file_name << std::endl;
-	remove(file_name.c_str());
 
 	music.play();
 	while (1) {
@@ -362,9 +356,7 @@ void audioPlayer(std::string file_name) {
 }
 
 void signal_callback_handler(int signum) {
-	std::cout << "\n";
-	system("tput reset");
-    exit(signum);
+    exitAndClear(signum);
 }
 
 int main(int argc, char **argv) {
@@ -385,9 +377,6 @@ int main(int argc, char **argv) {
 			switch(argv[i][j]) {
 				case 'a':
 					play_audio = false;
-					break;
-				case 'd':
-					debug = true;
 					break;
 				case 'f':
 					frame_threshold = atoi(argv[i+1]);
@@ -413,7 +402,6 @@ int main(int argc, char **argv) {
 	if (help || file_name == "") {
 		std::cout << "Usage: " << argv[0] << " <args> <filename>\n";
 		std::cout << "\t'-a' | Disable audio.\n";
-		std::cout << "\t'-d' | Enable debug prints.\n";
 		std::cout << "\t'-f <color threshold>' | Threshold for changing pixel color from previous frame. Bigger values result in better performance but lower quality. Use negative value to disable. 0 By default.\n";
 		std::cout << "\t'-h' | Show this menu and exit.\n";
 		std::cout << "\t'-l' | Loop video.\n";
@@ -456,7 +444,7 @@ int main(int argc, char **argv) {
 
 	// Start threads.
 	std::thread extractAudioThread(extractAudio, file_name);
-	std::thread audioThread(audioPlayer, "audio.wav");
+	std::thread audioThread(audioPlayer);
 	std::thread printThread(print);
 	std::thread bufferThread(createFrames, cap);
 	std::thread inputThread(getInputs);
@@ -472,9 +460,5 @@ int main(int argc, char **argv) {
 
 	cap.release();
 
-	// Reset terminal.
-	std::cout << "\n";
-	system("tput reset");
-
-	exit(0);
+	exitAndClear(0);
 }

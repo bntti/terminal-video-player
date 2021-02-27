@@ -16,7 +16,6 @@ A hardware accelerated terminal (for example [alacritty](https://github.com/alac
 | Flag                   | Description                                                                                                                              |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `-a`                   | Disable audio.                                                                                                                           |
-| `-d`                   | Enable debug prints.                                                                                                                     |
 | `-f <color threshold>` | Threshold for updating pixel. Bigger values result in better performance but lower quality. Use negative value to disable. 0 By default. |
 | `-h`                   | Show this menu and exit.                                                                                                                 |
 | `-l`                   | Loop video.                                                                                                                              |
