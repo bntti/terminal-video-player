@@ -17,7 +17,7 @@
 // Global clock.
 auto global_time = std::chrono::steady_clock::now();
 
-// Communication between print and createFrames threads.
+// Communication between DrawFrames and CreateFrames threads.
 std::string buffer[2];
 bool frame_done[2];
 bool print_done[2];
@@ -39,7 +39,7 @@ bool center = true;
 // CreateFrames variable.
 int previous_frame[4096][2160];
 
-void exitAndClear(int return_code, std::string exit_message = "") {
+void ExitAndClear(int return_code, std::string exit_message = "") {
     remove("audio.wav");
     std::cout << "\n";
     system("tput reset");
@@ -47,7 +47,7 @@ void exitAndClear(int return_code, std::string exit_message = "") {
     exit(return_code);
 }
 
-void createFrames(cv::VideoCapture cap) {
+void CreateFrames(cv::VideoCapture cap) {
     int current_buffer = 0;
 
     // Create variables.
@@ -250,7 +250,7 @@ void createFrames(cv::VideoCapture cap) {
     }
 }
 
-void print() {
+void DrawFrames() {
     int current_buffer = 0;
 
     while (1) {
@@ -268,7 +268,7 @@ void print() {
     }
 }
 
-void getInputs() {
+void GetInputs() {
     auto pause_time = std::chrono::steady_clock::now();
     auto current_time = std::chrono::steady_clock::now();
     while (1) {
@@ -311,7 +311,7 @@ void getInputs() {
     }
 }
 
-void extractAudio(std::string file_name) {
+void ExtractAudio(std::string file_name) {
     if (!play_audio) return;
     // mp4 -> wav conversion.
     std::string command = "ffmpeg -y -i \"" + file_name + "\" audio.wav &> /dev/null";
@@ -319,11 +319,11 @@ void extractAudio(std::string file_name) {
     if (return_code != 0) {
         std::string exit_message = "";
         if (return_code != 65280) exit_message = "ffmpeg returned: " + std::to_string(return_code) + ". Exiting...";
-        exitAndClear(1, exit_message);
+        ExitAndClear(1, exit_message);
     }
 }
 
-void audioPlayer() {
+void AudioPlayer() {
     if (!play_audio) return;
     sf::Music music;
 
@@ -332,7 +332,7 @@ void audioPlayer() {
     int sleep_count = 0;
     video_paused = true;
     while (!music.openFromFile("audio.wav")) {
-        if (sleep_count > 10) exitAndClear(1, "Error opening audio file");
+        if (sleep_count > 10) ExitAndClear(1, "Error opening audio file");
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         ++sleep_count;
     }
@@ -357,12 +357,12 @@ void audioPlayer() {
     }
 }
 
-void signal_callback_handler(int signum) {
-    exitAndClear(signum);
+void SignalCallbackHandler(int signum) {
+    ExitAndClear(signum);
 }
 
 int main(int argc, char **argv) {
-    signal(SIGINT, signal_callback_handler);
+    signal(SIGINT, SignalCallbackHandler);
 
     std::string file_name = "";
     bool help = false;
@@ -447,11 +447,11 @@ int main(int argc, char **argv) {
     global_time = std::chrono::steady_clock::now();
 
     // Start threads.
-    std::thread extractAudioThread(extractAudio, file_name);
-    std::thread audioThread(audioPlayer);
-    std::thread printThread(print);
-    std::thread bufferThread(createFrames, cap);
-    std::thread inputThread(getInputs);
+    std::thread extractAudioThread(ExtractAudio, file_name);
+    std::thread audioThread(AudioPlayer);
+    std::thread printThread(DrawFrames);
+    std::thread bufferThread(CreateFrames, cap);
+    std::thread inputThread(GetInputs);
 
     // Join threads.
     bufferThread.join();
@@ -464,5 +464,5 @@ int main(int argc, char **argv) {
 
     cap.release();
 
-    exitAndClear(0);
+    ExitAndClear(0);
 }
