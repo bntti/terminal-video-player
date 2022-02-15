@@ -30,8 +30,7 @@ bool clear = false;
 
 // Global variables set by flags.
 bool show_status_text = false;
-int color_threshold = 0;
-int frame_threshold = 0;
+int max_color_diff = 0;
 bool play_audio = true;
 bool loop = false;
 bool center = true;
@@ -170,10 +169,8 @@ void CreateFrames(cv::VideoCapture cap) {
 
         buffer[current_buffer] = "";
         if (clear || (int)terminal_y_pixels != prev_y_pixels || (int)terminal_x_pixels != prev_x_pixels) {
-            if (frame_threshold >= 0) {
-                for (int y = 0; y < frame_height; ++y) {
-                    for (int x = 0; x < frame_width; ++x) previous_frame[x][y] = 0;
-                }
+            for (int y = 0; y < frame_height; ++y) {
+                for (int x = 0; x < frame_width; ++x) previous_frame[x][y] = 0;
             }
             buffer[current_buffer] += "\33[0m\33[3J\33[2J";
             prev_r = 1e9;
@@ -202,7 +199,7 @@ void CreateFrames(cv::VideoCapture cap) {
                 int prev_frame_r = (previous_frame[x][y] >> 16) & 0xFF;
                 int prev_frame_g = (previous_frame[x][y] >> 8) & 0xFF;
                 int prev_frame_b = (previous_frame[x][y]) & 0xFF;
-                if (i >= std::max(prev_len, status_text_len) && abs(r - prev_frame_r) + abs(g - prev_frame_g) + abs(b - prev_frame_b) < frame_threshold) {
+                if (i >= std::max(prev_len, status_text_len) && abs(r - prev_frame_r) + abs(g - prev_frame_g) + abs(b - prev_frame_b) < max_color_diff) {
                     skip = true;
                     continue;
                 } else if (skip) {
@@ -226,7 +223,7 @@ void CreateFrames(cv::VideoCapture cap) {
 
                 // Add pixel to frame.
                 // Check if color should be changed.
-                if (abs(r - prev_r) + abs(g - prev_g) + abs(b - prev_b) > color_threshold) {
+                if (abs(r - prev_r) + abs(g - prev_g) + abs(b - prev_b) > max_color_diff) {
                     prev_r = r;
                     prev_g = g;
                     prev_b = b;
@@ -380,19 +377,15 @@ int main(int argc, char **argv) {
                 case 'a':
                     play_audio = false;
                     break;
-                case 'f':
-                    frame_threshold = atoi(argv[i + 1]);
-                    skip = 1;
+                case 'd':
+                    max_color_diff = atoi(argv[i + 1]);
+                    skip = true;
                     break;
                 case 'h':
                     help = true;
                     break;
                 case 'l':
                     loop = true;
-                    break;
-                case 't':
-                    color_threshold = atoi(argv[i + 1]);
-                    skip = true;
                     break;
                 default:
                     std::cout << "Invalid argument: '-" << argv[i][j] << "'" << std::endl;
@@ -406,10 +399,9 @@ int main(int argc, char **argv) {
         std::cout << "\n";
         std::cout << "Runtime flags:\n";
         std::cout << "\t'-a' | Disable audio.\n";
-        std::cout << "\t'-f <color threshold>' | Threshold for changing pixel color from previous frame. Bigger values result in better performance but lower quality. Use negative value to disable. 0 By default.\n";
+        std::cout << "\t'-d <max color diff>' | Maximum difference between correct color and displayed color. Bigger values result in better performance but lower quality. 0 By default.\n";
         std::cout << "\t'-h' | Show this menu and exit.\n";
         std::cout << "\t'-l' | Loop video.\n";
-        std::cout << "\t'-t <color threshold>' | Threshold for changing color. Bigger values result in better performance but lower quality. 0 By default.\n";
         std::cout << "\n";
         std::cout << "Player controls:\n";
         std::cout << "\t'c' | Toggle center video.\n";
