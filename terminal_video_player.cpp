@@ -15,12 +15,12 @@
 #include <vector>
 
 // Global clock.
-auto global_time = std::chrono::steady_clock::now();
+auto video_start_time = std::chrono::steady_clock::now();
 
 // Communication between DrawFrames and CreateFrames threads.
 std::string buffer[2];
 bool frame_done[2];
-bool print_done[2];
+bool print_done[2] = {true, true};
 
 // Communication between all threads.
 bool stop_program = false;
@@ -52,7 +52,7 @@ void CreateFrames(cv::VideoCapture cap) {
     // Create variables.
     auto frame_start = std::chrono::steady_clock::now();
     std::vector<long double> frame_times;
-    long double frame_count = 0;
+    int frame_count = 0;
     long double fps = cap.get(cv::CAP_PROP_FPS);
     cv::Mat frame;
     int prev_r = 0;
@@ -62,45 +62,27 @@ void CreateFrames(cv::VideoCapture cap) {
     int prev_x_pixels = 0;
     int prev_len = 0;
     while (1) {
-        // Catch up with the video.
-        long double current_time_s = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - global_time).count() / 1000.0;
-        long double new_frame_count = current_time_s * fps;
+        auto current_time = std::chrono::steady_clock::now();
+        long double video_time_s = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - video_start_time).count() / 1000.0;
+        int target_frame_count = video_time_s * fps;
 
-        if (!restart) {
-            // Fast catching up if difference isn't big.
-            while (new_frame_count > frame_count && new_frame_count - frame_count < fps) {
-                cap >> frame;
-                ++frame_count;
-            }
-            if (new_frame_count < frame_count && frame_count - new_frame_count < fps) {
-                long double seconds = (frame_count - new_frame_count) / fps;
-                std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
-            }
+        // Skip or go back multiple frames.
+        if (restart || abs(target_frame_count - frame_count) >= fps) {
+            restart = false;
+            cap.set(cv::CAP_PROP_POS_FRAMES, (int)target_frame_count);
+            frame_count = target_frame_count;
+            continue;
         }
 
-        // Match the global time.
-        while (restart || abs(new_frame_count - frame_count) >= fps) {
-            // Fast catching up if difference isn't big.
-            bool skip = false;
-            if (!restart) {
-                while (new_frame_count > frame_count && new_frame_count - frame_count < fps) {
-                    cap >> frame;
-                    ++frame_count;
-                    skip = true;
-                }
-                if (new_frame_count < frame_count && frame_count - new_frame_count < fps) {
-                    long double seconds = (frame_count - new_frame_count) / fps;
-                    std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
-                    skip = true;
-                }
-            }
-            if (skip) break;
-
-            restart = false;
-            cap.set(cv::CAP_PROP_POS_FRAMES, (int)new_frame_count);
-            frame_count = new_frame_count;
-            current_time_s = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - global_time).count() / 1000.0;
-            new_frame_count = current_time_s * fps;
+        // Skip frames because we are behind the target.
+        while (target_frame_count > frame_count && target_frame_count - frame_count < fps) {
+            cap >> frame;
+            ++frame_count;
+        }
+        // Wait because we are ahead of the target.
+        if (target_frame_count < frame_count) {
+            long double seconds = (frame_count - target_frame_count) / fps;
+            std::this_thread::sleep_for(std::chrono::milliseconds((int)(seconds * 1000)));
         }
 
         // Read frame.
@@ -109,7 +91,7 @@ void CreateFrames(cv::VideoCapture cap) {
         if (frame.empty()) {
             if (loop) {
                 restart = true;
-                global_time = std::chrono::steady_clock::now();
+                video_start_time = std::chrono::steady_clock::now();
                 continue;
             }
             stop_program = true;
@@ -152,9 +134,9 @@ void CreateFrames(cv::VideoCapture cap) {
             status_text += "|res: " + std::to_string(frame_width) + "x" + std::to_string((int)std::round((frame_height * aspect_ratio_scale)));
 
             // Calculate framerate.
-            auto current_time = std::chrono::steady_clock::now();
+            current_time = std::chrono::steady_clock::now();
             long double milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - frame_start).count();
-            frame_start = std::chrono::steady_clock::now();
+            frame_start = current_time;
             frame_times.push_back(milliseconds);
 
             int amount = 0;
@@ -167,13 +149,11 @@ void CreateFrames(cv::VideoCapture cap) {
             status_text += "|fps: " + std::to_string((int)(1000 / (sum / amount)));
         }
 
+        bool force_redraw = false;
         buffer[current_buffer] = "";
         if (clear || (int)terminal_y_pixels != prev_y_pixels || (int)terminal_x_pixels != prev_x_pixels) {
-            for (int y = 0; y < frame_height; ++y) {
-                for (int x = 0; x < frame_width; ++x) previous_frame[x][y] = 0;
-            }
+            force_redraw = true;
             buffer[current_buffer] += "\33[0m\33[3J\33[2J";
-            prev_r = 1e9;
             prev_y_pixels = (int)terminal_y_pixels;
             prev_x_pixels = (int)terminal_x_pixels;
             clear = false;
@@ -182,13 +162,14 @@ void CreateFrames(cv::VideoCapture cap) {
         int start_column = (terminal_x_pixels - frame_width) / 2 + 1;
         buffer[current_buffer] += "\33[1;1H";
 
-        int i = 0;
+        int status_text_index = 0;
         int status_text_len = status_text.length();
         bool skip = false;
         // Create frame.
         for (int y = 0; y < frame_height; ++y) {
             if (center) buffer[current_buffer] += "\33[" + std::to_string(current_line) + ";" + std::to_string(start_column) + "H";
             ++current_line;
+
             for (int x = 0; x < frame_width; ++x) {
                 int b = frame.at<cv::Vec3b>(y, x)[0];
                 int g = frame.at<cv::Vec3b>(y, x)[1];
@@ -199,10 +180,13 @@ void CreateFrames(cv::VideoCapture cap) {
                 int prev_frame_r = (previous_frame[x][y] >> 16) & 0xFF;
                 int prev_frame_g = (previous_frame[x][y] >> 8) & 0xFF;
                 int prev_frame_b = (previous_frame[x][y]) & 0xFF;
-                if (i >= std::max(prev_len, status_text_len) && abs(r - prev_frame_r) + abs(g - prev_frame_g) + abs(b - prev_frame_b) < max_color_diff) {
+                if (status_text_index >= std::max(prev_len, status_text_len) && !force_redraw && abs(r - prev_frame_r) + abs(g - prev_frame_g) + abs(b - prev_frame_b) < max_color_diff) {
+                    // Don't draw pixel if pixel from previous frame is similar enough.
                     skip = true;
                     continue;
                 } else if (skip) {
+                    skip = false;
+                    // Set cursor to correct place
                     if (center)
                         buffer[current_buffer] += "\33[" + std::to_string(current_line - 1) + ";" + std::to_string(start_column + x) + "H";
                     else
@@ -211,19 +195,18 @@ void CreateFrames(cv::VideoCapture cap) {
                 previous_frame[x][y] = color;
 
                 std::string c = " ";
-                if (i < status_text_len) {
+                if (status_text_index < status_text_len) {
                     // Invert color.
                     int inv_color = 0xFFFFFF - (r << 16 | g << 8 | b);
                     int inv_r = (inv_color >> 16) & 0xFF;
                     int inv_g = (inv_color >> 8) & 0xFF;
                     int inv_b = (inv_color)&0xFF;
-                    c = "\33[38;2;" + std::to_string(inv_r) + ";" + std::to_string(inv_g) + ";" + std::to_string(inv_b) + "m" + status_text[i];
+                    c = "\33[38;2;" + std::to_string(inv_r) + ";" + std::to_string(inv_g) + ";" + std::to_string(inv_b) + "m" + status_text[status_text_index];
+                    ++status_text_index;
                 }
-                ++i;
 
-                // Add pixel to frame.
-                // Check if color should be changed.
-                if (abs(r - prev_r) + abs(g - prev_g) + abs(b - prev_b) > max_color_diff) {
+                // Compare pixel to previous pixel.
+                if (force_redraw || abs(r - prev_r) + abs(g - prev_g) + abs(b - prev_b) > max_color_diff) {
                     prev_r = r;
                     prev_g = g;
                     prev_b = b;
@@ -266,38 +249,40 @@ void DrawFrames() {
 }
 
 void GetInputs() {
+    // Change time in video by changing video start time and CreateFrames handles the rest.
     auto pause_time = std::chrono::steady_clock::now();
-    auto current_time = std::chrono::steady_clock::now();
     while (1) {
         char c = getc(stdin);
+        auto current_time = std::chrono::steady_clock::now();
         switch (c) {
             case 'c':
                 center = !center;
                 clear = true;
                 break;
             case 'j':
-                global_time += std::chrono::seconds(5);
-                current_time = std::chrono::steady_clock::now();
-                if (std::chrono::operator>(global_time, current_time)) global_time = current_time;
+                video_start_time += std::chrono::seconds(5);
+                if (std::chrono::operator>(video_start_time, current_time)) {
+                    restart = true;
+                    video_start_time = current_time;
+                }
                 break;
             case 'k':
                 if (video_paused) {
-                    current_time = std::chrono::steady_clock::now();
                     int milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - pause_time).count();
-                    global_time += std::chrono::milliseconds(milliseconds);
+                    video_start_time += std::chrono::milliseconds(milliseconds);
                 } else
-                    pause_time = std::chrono::steady_clock::now();
+                    pause_time = current_time;
                 video_paused = !video_paused;
                 break;
             case 'l':
-                global_time -= std::chrono::seconds(5);
+                video_start_time -= std::chrono::seconds(5);
                 break;
             case 'q':
                 stop_program = true;
                 return;
             case 'r':
                 restart = true;
-                global_time = std::chrono::steady_clock::now();
+                video_start_time = current_time;
                 break;
             case 's':
                 show_status_text = !show_status_text;
@@ -326,11 +311,11 @@ void AudioPlayer() {
 
     // Try to open audio and wait for audio extraction.
     clear = true;
-    int sleep_count = 0;
     video_paused = true;
+    int sleep_count = 0;
     while (!music.openFromFile("audio.wav")) {
-        if (sleep_count > 10) ExitAndClear(1, "Error opening audio file");
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        if (sleep_count > 100) ExitAndClear(1, "Error opening audio file");
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         ++sleep_count;
     }
     video_paused = false;
@@ -342,12 +327,13 @@ void AudioPlayer() {
         if (video_paused && music.getStatus() == music.Playing) music.pause();
         if (!video_paused && music.getStatus() == music.Paused) music.play();
         int current_position = music.getPlayingOffset().asMilliseconds();
-        int current_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - global_time).count();
-        while (abs(current_position - current_time_ms) > 1000) {
-            sf::Time current = sf::milliseconds(current_time_ms);
+        auto current_time = std::chrono::steady_clock::now();
+        int video_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - video_start_time).count();
+        while (abs(current_position - video_time_ms) > 1000) {
+            sf::Time current = sf::milliseconds(video_time_ms);
             music.setPlayingOffset(current);
             current_position = music.getPlayingOffset().asMilliseconds();
-            current_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - global_time).count();
+            video_time_ms = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - video_start_time).count();
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -414,9 +400,6 @@ int main(int argc, char **argv) {
         exit(0);
     }
 
-    print_done[0] = true;
-    print_done[1] = true;
-
     // Open video.
     cv::VideoCapture cap(file_name);
 
@@ -436,7 +419,7 @@ int main(int argc, char **argv) {
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 
     // Set time 0 to now.
-    global_time = std::chrono::steady_clock::now();
+    video_start_time = std::chrono::steady_clock::now();
 
     // Start threads.
     std::thread extractAudioThread(ExtractAudio, file_name);
@@ -455,6 +438,5 @@ int main(int argc, char **argv) {
     extractAudioThread.detach();
 
     cap.release();
-
     ExitAndClear(0);
 }
